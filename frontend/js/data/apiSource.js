@@ -1,0 +1,52 @@
+// apiSource.js – talks to OUR backend (backend/app.py, built in step 7).
+// The endpoint /api/cutouts is defined by us, so it is not an external/guessed URL.
+// The backend must return JSON: { frames: Frame[] } (see getCutouts.js for Frame).
+
+import { API_BASE } from "../config.js";
+
+const REQUEST_TIMEOUT_MS = 60_000;
+
+export async function getCutoutsApi({ ra, dec, fovArcmin, detector }) {
+  const params = new URLSearchParams({ ra, dec, fov: fovArcmin, det: detector });
+  const body = await getJson(`${API_BASE}/api/cutouts?${params}`);
+  if (!body || !Array.isArray(body.frames)) {
+    throw new Error("The data server response has no \"frames\" list.");
+  }
+  return body.frames;
+}
+
+export async function getPhotometryApi({ ra, dec, detector = "all" }) {
+  const params = new URLSearchParams({ ra, dec, det: detector });
+  const body = await getJson(`${API_BASE}/api/photometry?${params}`);
+  if (!body || !Array.isArray(body.points)) {
+    throw new Error("The data server response has no \"points\" list.");
+  }
+  return body.points;
+}
+
+/** GET a JSON document from our backend with a timeout and readable errors. */
+async function getJson(url) {
+  let response;
+  try {
+    // Real cutouts can be slow (archive query + FITS download), but never wait forever.
+    response = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  } catch (err) {
+    if (err.name === "TimeoutError") {
+      throw new Error(`The data server took longer than ${REQUEST_TIMEOUT_MS / 1000} s to answer. Try a smaller field of view or retry.`);
+    }
+    // fetch only throws on network problems (server down, CORS blocked, offline).
+    throw new Error(`Cannot reach the data server at ${API_BASE}. Is the backend running?`);
+  }
+  if (!response.ok) {
+    // Try to show the backend's own error message if it sent one.
+    let detail = "";
+    try {
+      const d = (await response.json()).detail;
+      // FastAPI validation errors (422) send a list of { loc, msg }; others send a string.
+      detail = Array.isArray(d) ? d.map((e) => `${e.loc?.at(-1) ?? ""}: ${e.msg}`).join("; ") : (d || "");
+    } catch { /* not JSON */ }
+    throw new Error(`Data server error ${response.status}${detail ? `: ${detail}` : ""}`);
+  }
+  try { return await response.json(); }
+  catch { throw new Error("The data server sent a response that is not valid JSON."); }
+}

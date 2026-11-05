@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPHEREx Blink – Spot Moving Objects in the Infrared Sky</title>
+  <meta name="description" content="Enter sky coordinates and blink through NASA SPHEREx near-infrared images taken at different times to spot moving objects like brown dwarfs, nearby stars and asteroids.">
+
+  <!-- Google Fonts: Space Grotesk for headings, Inter for body text -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <!-- Decorative animated starfield behind everything (pure CSS, aria-hidden) -->
+  <div class="sky-bg" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <div class="brand">
+      <span class="brand-logo" aria-hidden="true"></span>
+      <div>
+        <h1>SPHEREx <span class="accent">Blink</span></h1>
+        <p class="tagline">Flip through the infrared sky over time &mdash; things that move, stand out.</p>
+      </div>
+    </div>
+    <span class="badge" id="data-source-badge" title="Which data source is active">Mock data</span>
+  </header>
+
+  <main class="layout">
+    <!-- ============ LEFT: search controls ============ -->
+    <section class="panel controls" aria-labelledby="controls-title">
+      <h2 id="controls-title">1. Choose a patch of sky</h2>
+
+      <form id="search-form" novalidate>
+        <div class="field">
+          <label for="ra-input">Right Ascension (RA)</label>
+          <input id="ra-input" name="ra" type="text" inputmode="decimal" autocomplete="off"
+                 placeholder="133.7951  or  08h55m10.83s" aria-describedby="ra-help ra-error">
+          <small id="ra-help" class="help">Degrees (0–360) or hours-minutes-seconds.</small>
+          <small id="ra-error" class="error-text" role="alert"></small>
+        </div>
+
+        <div class="field">
+          <label for="dec-input">Declination (Dec)</label>
+          <input id="dec-input" name="dec" type="text" inputmode="decimal" autocomplete="off"
+                 placeholder="-7.2451  or  -07d14m42.5s" aria-describedby="dec-help dec-error">
+          <small id="dec-help" class="help">Degrees (−90 to +90) or degrees-arcmin-arcsec.</small>
+          <small id="dec-error" class="error-text" role="alert"></small>
+        </div>
+
+        <div class="field">
+          <label for="fov-input">Field of view: <output id="fov-value" for="fov-input">5</output> arcmin</label>
+          <input id="fov-input" name="fov" type="range" min="1" max="30" step="1" value="5">
+          <div class="range-scale" aria-hidden="true"><span>1′</span><span>30′</span></div>
+        </div>
+
+        <div class="field">
+          <label for="det-select">Detector</label>
+          <!-- Options are filled from the data (step 4). Disabled until we have data. -->
+          <select id="det-select" name="det" disabled>
+            <option value="">Load data first</option>
+          </select>
+          <small class="help">Blink always compares the <em>same</em> detector at different dates.</small>
+        </div>
+
+        <button type="submit" id="load-btn" class="btn btn-primary">
+          <span class="btn-label">Load images</span>
+        </button>
+      </form>
+
+      <div class="quick-picks">
+        <h3>Or try a test object</h3>
+        <!-- Buttons get their coordinates from js/targets.js (step 2) -->
+        <div id="quick-pick-list" class="chip-list" role="group" aria-label="Test objects"></div>
+      </div>
+
+      <details class="hint" open>
+        <summary>How to spot a moving object</summary>
+        <ol>
+          <li>Press <kbd>Play</kbd> &mdash; images from different dates flash one after another.</li>
+          <li>Most stars stay put. Look for a dot that <strong>jumps</strong> or <strong>drifts</strong>.</li>
+          <li>A dot that only gets <strong>brighter/fainter</strong> in place is probably a variable star.</li>
+          <li>Slow down the speed or step frame by frame with <kbd>←</kbd> <kbd>→</kbd>.</li>
+          <li>Too faint? Try <strong>Difference</strong> (still stars vanish) or <strong>Trail</strong> (a mover leaves a line of dots).</li>
+          <li>Found something? <strong>Click it</strong> to see its spectrum and light curve, and check the sky map: is it a known object?</li>
+        </ol>
+      </details>
+    </section>
+
+    <!-- ============ RIGHT: blink player ============ -->
+    <section class="panel player" aria-labelledby="player-title">
+      <h2 id="player-title">2. Blink</h2>
+
+      <!-- View modes. Native radio buttons = free keyboard support (arrow keys). -->
+      <fieldset class="mode-switch" id="mode-switch">
+        <legend class="sr-only">View mode</legend>
+        <label><input type="radio" name="mode" value="blink" checked><span>Blink</span></label>
+        <label><input type="radio" name="mode" value="diff"><span>Difference</span></label>
+        <label><input type="radio" name="mode" value="mean"><span>Stack</span></label>
+        <label><input type="radio" name="mode" value="max"><span>Trail</span></label>
+      </fieldset>
+      <p class="mode-help" id="mode-help" aria-live="polite"></p>
+
+      <!-- The stage holds the image. aria-live announces status changes to screen readers. -->
+      <div class="stage" id="stage">
+        <canvas id="blink-canvas" width="512" height="512" aria-label="Blink image" role="img"
+                title="Click a source to measure its brightness"></canvas>
+        <div class="crosshair" aria-hidden="true"></div>
+        <div class="stage-overlay" id="stage-overlay" aria-live="polite">
+          <p class="overlay-title">No images yet</p>
+          <p class="overlay-sub">Enter coordinates or pick a test object.</p>
+          <!-- Progress bar while images preload; hidden unless JS sets a value -->
+          <progress id="overlay-progress" class="overlay-progress" max="1" value="0" hidden></progress>
+          <button type="button" id="retry-btn" class="btn btn-retry" hidden>Try again</button>
+        </div>
+      </div>
+
+      <!-- Short, non-blocking notes (e.g. "D1 has no images here, showing D2") -->
+      <p id="status-msg" class="status" role="status" aria-live="polite"></p>
+
+      <div class="player-controls" role="group" aria-label="Blink player controls">
+        <button type="button" id="play-btn" class="btn btn-icon" aria-label="Play" disabled>
+          <span class="icon-play" aria-hidden="true"></span>
+        </button>
+
+        <div class="frame-slider">
+          <label for="frame-slider" class="sr-only">Frame</label>
+          <input id="frame-slider" type="range" min="0" max="0" value="0" disabled>
+          <div class="frame-info">
+            <span id="frame-counter">Frame – / –</span>
+            <span id="frame-date">—</span>
+          </div>
+        </div>
+
+        <div class="speed">
+          <label for="speed-input">Speed <output id="speed-value" for="speed-input">2</output> fps</label>
+          <input id="speed-input" type="range" min="0.5" max="10" step="0.5" value="2">
+        </div>
+      </div>
+
+      <p class="shortcuts" id="shortcuts-hint">
+        Keyboard: <kbd>Space</kbd> play/pause &middot; <kbd>←</kbd> <kbd>→</kbd> step one frame
+      </p>
+
+      <div class="player-options">
+        <label class="check"><input type="checkbox" id="show-flags"> Show flagged pixels</label>
+        <label class="check"><input type="checkbox" id="skip-flagged"> Skip frames with &gt; 1&nbsp;% flagged pixels</label>
+      </div>
+
+      <div class="tools" role="group" aria-label="Save and share">
+        <button type="button" class="btn btn-small" id="save-png-btn" disabled>Save image</button>
+        <button type="button" class="btn btn-small" id="record-btn" disabled>Record video</button>
+        <button type="button" class="btn btn-small" id="copy-link-btn">Copy link</button>
+      </div>
+
+      <!-- Metadata of the current frame -->
+      <dl class="meta" id="frame-meta">
+        <div><dt>Detector</dt><dd id="meta-det">—</dd></div>
+        <div><dt>Wavelength</dt><dd id="meta-wl">—</dd></div>
+        <div><dt>MJD</dt><dd id="meta-mjd">—</dd></div>
+        <div><dt>Flags</dt><dd id="meta-flags">—</dd></div>
+      </dl>
+
+      <!-- "All" detectors: one averaged image per detector. Click one to blink it. -->
+      <div class="overview" id="overview" hidden>
+        <h3>All detectors <span class="muted">(average of each &middot; click to blink)</span></h3>
+        <div class="overview-grid" id="overview-grid"></div>
+      </div>
+    </section>
+
+    <!-- ============ 3. Measure (spectrum + light curve) ============ -->
+    <section class="panel measure" aria-labelledby="measure-title">
+      <h2 id="measure-title">3. Measure a source</h2>
+      <p class="muted" id="measure-hint">
+        Click a dot in the image. We measure its brightness in every frame:
+        <strong>spectrum</strong> = brightness vs. wavelength (one colour per survey pass),
+        <strong>light curve</strong> = brightness vs. date (one colour per detector).
+      </p>
+      <p class="measure-pos" id="measure-pos" aria-live="polite"></p>
+      <div class="charts" id="charts" hidden>
+        <figure class="chart">
+          <figcaption>Spectrum at the marked position</figcaption>
+          <div id="spectrum-chart" class="chart-box"></div>
+        </figure>
+        <figure class="chart">
+          <figcaption>Light curve at the marked position</figcaption>
+          <div id="lightcurve-chart" class="chart-box"></div>
+        </figure>
+      </div>
+      <p class="muted small" id="measure-note" hidden>
+        Flux = background-subtracted sum in a 2-pixel aperture, in image units (not calibrated).
+        A <em>moving</em> object is only inside the circle on the dates when it was there –
+        that is expected, not an error.
+      </p>
+      <details class="table-view" id="measure-table-wrap" hidden>
+        <summary>Show as table</summary>
+        <div class="table-scroll"><table id="measure-table"></table></div>
+      </details>
+    </section>
+
+    <!-- ============ 4. Sky context (Aladin Lite) ============ -->
+    <section class="panel context" aria-labelledby="context-title">
+      <h2 id="context-title">4. What is known here?</h2>
+      <p class="muted">Other surveys at the same spot, with catalogued objects from SIMBAD.
+        The dashed square is the field you are blinking.</p>
+      <div class="context-controls">
+        <label for="survey-select">Survey</label>
+        <select id="survey-select">
+          <option value="2mass">2MASS (near-IR, 1997–2001)</option>
+          <option value="allwise">AllWISE (mid-IR, 2010)</option>
+          <option value="dss2">DSS2 (optical, 1950s–90s)</option>
+        </select>
+        <button type="button" class="btn btn-small" id="aladin-btn">Show sky map</button>
+      </div>
+      <div id="aladin-box" class="skymap" hidden></div>
+      <p class="muted small" id="aladin-status" aria-live="polite"></p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Built for NASA Space Apps Challenge 2026 &middot; “Planet X and SPHEREx”. Data: NASA/IPAC IRSA SPHEREx archive.</p>
+  </footer>
+
+  <!-- type="module" lets us use import/export without a bundler.
+       NOTE: modules do NOT load from file:// – serve the folder over http. -->
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
