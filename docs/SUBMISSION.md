@@ -15,11 +15,12 @@ Order of work (decided 5 Nov): everything below, **real SPHEREx data last**.
 - [ ] Wavelength at the cutout position (SPHEREx filters vary across the detector).
 - [ ] Which flag bits really mean "bad pixel".
 - [ ] Blink WISE 0855 on real data; expect ~8″/yr ≈ 1.3 px/yr – the Difference and Trail
-      modes are what make this visible.
+      modes are what make this visible. **It must sit on the green predicted-position ticks**
+      in every frame (`scratch/check_track.js` measures the offset; < 0.5 px is good).
 - [ ] Remove or clearly label the fake FITS generator in the demo.
 
 ## 3. Repository
-- [ ] `git init`, first commit (`.gitignore` already excludes `.venv`, `cache`, `data`).
+- [x] `git init`, first commit (`.gitignore` excludes `.venv`, `cache`, `data`, `.claude`).
 - [ ] Public GitHub repo, README renders, licence chosen (e.g. MIT).
 - [ ] Screenshot / GIF at the top of the README.
 - [ ] Hosting the frontend (e.g. GitHub Pages works for the mock: it is a static site).
@@ -28,8 +29,9 @@ Order of work (decided 5 Nov): everything below, **real SPHEREx data last**.
 ## 4. Demo video – suggested script (~30 s; adjust to the official length limit)
 1. (3 s) Title: "SPHEREx Blink – find what moves in the infrared sky".
 2. (5 s) Click **WISE 0855** → images load, blink plays.
-3. (6 s) Switch to **Difference**: stars vanish, the brown dwarf lights up in orange.
-4. (5 s) **Trail**: the dots in a line = its motion across the passes.
+3. (6 s) Switch to **Difference**: stars vanish; the brown dwarf shows as orange (now) next
+   to blue (before) – only ~1.3 px per year, invisible in a plain blink.
+4. (5 s) The **green ticks** (catalogue prediction) sit right on it: physics and data agree.
 5. (6 s) Click it → **spectrum** rises towards 5 µm (cold brown dwarf), light curve.
 6. (5 s) **Sky map**: 2MASS from 1999 – the object was somewhere else back then.
    (Tip: "Record video" in the app gives a clean clip of the blink itself.)

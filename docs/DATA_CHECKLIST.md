@@ -61,3 +61,16 @@ file says otherwise, change the CONFIG block in `backend/spherex/query.py` (one 
 - [ ] **Flag masks**: right now every nonzero bit is drawn red. Decide which bits to show.
 - [ ] **Difference mode** uses frames > 30 days away as reference. Check the real SPHEREx cadence (gaps between passes) still fits this.
 - [ ] Sky map surveys come from IRSA's HiPS copies through `/api/hips` (allowlist in `backend/spherex/hips_proxy.py`). If IRSA ever publishes a SPHEREx HiPS, add it there (verify the URL in https://irsa.ipac.caltech.edu/data/hips/list first).
+- [ ] **Predicted position** (green ticks): on real data, WISE 0855 / Barnard's Star / eps Ind B must sit on the ticks in every frame. A constant offset → WCS or centre problem; an offset growing with time → wrong MJD keyword or time scale; mirrored motion → orientation/flip problem. Measure with `scratch/check_track.js`. (Positions ignore parallax: < 0.6″, i.e. < 0.1 px.)
+
+## Actualizare 6 nov: confirmat din documentația IRSA (vezi IRSA_FACTS.md)
+- [x] HDU 1 = IMAGE (2040×2040 float32, MJy/sr), HDU 2 = FLAGS (int32). Mai există: VARIANCE, ZODI, PSF, WCS-WAVE.
+- [x] Detectoare: cuvânt-cheie `DETECTOR` (număr); în TAP `energy_bandpassname` = `SPHEREx-D<n>`; perechi (1,4), (2,5), (3,6).
+- [x] Lungime de undă per pixel: WCS-WAVE (grilă 11×11), `WCS(header, fobj=hdul, key="W")`, `sip=None`, `pixel_to_world`.
+- [x] Definiția biților de flag (lista în IRSA_FACTS.md). **Rezultat: „orice bit ≠ 0” e greșit**; biții 12 și 21 sunt informativi.
+- [x] Metoda de acces: TAP (`spherex.plane`, `spherex.artifact`) + cutout `?center=ra,dec&size=...`; SIA2 cu colecții `spherex_qr2` / `spherex_qr3`.
+- [ ] Cuvântul-cheie al timpului observației (`DATE` = observație sau creare?). Alternativa: `time_bounds_lower` din TAP.
+- [ ] Dimensiunea maximă a cutout-ului și limitele de rată.
+- [ ] Termenii de utilizare / citarea datelor SPHEREx.
+- [ ] Scara pixelilor din WCS pe un fișier real (documentația sugerează ~6,15″).
+- [ ] Care din cele 5 obiecte test au cel puțin 2 epoci pe același detector (interogare TAP).

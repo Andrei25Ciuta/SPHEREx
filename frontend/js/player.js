@@ -15,6 +15,7 @@
 //   const player = new BlinkPlayer(canvas, { onFrameChange, onPlayStateChange });
 //   await player.setFrames(frames, onProgress);  // preloads + decodes all images
 //   player.setMode("diff"); player.play(); player.goTo(3); player.setFps(4);
+//   player.setTracks([{ label, points: [{ fx, fy }, ...] }]);  // predicted positions, one per frame
 
 export const MODES = ["blink", "diff", "mean", "max"];
 const ANIMATED = new Set(["blink", "diff"]);       // modes that step through time
@@ -34,7 +35,9 @@ export class BlinkPlayer {
     this.playing = false;
     this.mode = "blink";
     this.showFlags = false;
-    this.marker = null;     // { fx, fy, r } in canvas fractions – the measuring aperture
+    this.marker = null;     // { fx, fy, rPx } in image fractions – the measuring aperture
+    this.tracks = [];       // predicted positions of known objects: [{ label, points: [{fx, fy}] }]
+    this.showTracks = true;
     this.lastTick = 0;
     this.rafId = null;
 
@@ -85,6 +88,9 @@ export class BlinkPlayer {
 
   setShowFlags(on) { this.showFlags = !!on; this.draw(); }
   setMarker(marker) { this.marker = marker; this.draw(); }
+  /** tracks[i].points[k] = predicted position at the date of frame k (same order as frames). */
+  setTracks(tracks) { this.tracks = tracks || []; this.draw(); }
+  setShowTracks(on) { this.showTracks = !!on; this.draw(); }
 
   /** Show frame i (wraps around, so goTo(-1) = last frame). */
   goTo(i) {
@@ -119,6 +125,7 @@ export class BlinkPlayer {
       ctx.globalAlpha = 1;
     }
 
+    if (this.showTracks && this.tracks.length) this._drawTracks();
     if (this.marker) this._drawMarker();
   }
 
@@ -265,6 +272,52 @@ export class BlinkPlayer {
     const cx = c.getContext("2d", { willReadFrequently: true });
     cx.putImageData(new ImageData(rgba, n, n), 0, 0);
     this.ctx.drawImage(c, 0, 0, this.canvas.width, this.canvas.height);
+  }
+
+  /**
+   * Predicted track: a thin dashed line through all predicted positions, a dot per date,
+   * and – for the frame on screen – four ticks AROUND the spot (never on top of it, so the
+   * real object stays visible). Green: distinct from the diff colours and the yellow aperture.
+   */
+  _drawTracks() {
+    const { ctx, canvas } = this;
+    const W = canvas.width, H = canvas.height;
+    const COLOR = "hsl(140 85% 58%)";
+    ctx.save();
+    ctx.shadowColor = "#000"; ctx.shadowBlur = 3;
+    for (const t of this.tracks) {
+      const pts = t.points.map((p) => [p.fx * W, p.fy * H]);
+      if (!pts.length) continue;
+
+      ctx.strokeStyle = COLOR; ctx.fillStyle = COLOR;
+      ctx.globalAlpha = 0.6; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      pts.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.stroke();
+      ctx.setLineDash([]);
+      for (const [x, y] of pts) { ctx.beginPath(); ctx.arc(x, y, 2.2, 0, 2 * Math.PI); ctx.fill(); }
+
+      // Ticks around the current frame's prediction (or around the last one when stacked).
+      const [cx, cy] = this.isAnimated ? (pts[this.index] ?? pts[0]) : pts.at(-1);
+      ctx.globalAlpha = 1; ctx.lineWidth = 2;
+      const r0 = 8, r1 = 17;
+      ctx.beginPath();
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        ctx.moveTo(cx + dx * r0, cy + dy * r0);
+        ctx.lineTo(cx + dx * r1, cy + dy * r1);
+      }
+      ctx.stroke();
+
+      // Label, kept inside the canvas.
+      ctx.font = "600 13px Inter, system-ui, sans-serif";
+      const text = `${t.label} (predicted)`;
+      const tw = ctx.measureText(text).width;
+      let lx = cx + 20, ly = cy - 20;
+      if (lx + tw > W - 6) lx = cx - 20 - tw;
+      if (ly < 16) ly = cy + 32;
+      ctx.fillText(text, Math.max(6, lx), Math.min(H - 6, ly));
+    }
+    ctx.restore();
   }
 
   _drawMarker() {

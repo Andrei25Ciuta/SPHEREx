@@ -10,15 +10,22 @@ EVERYTHING in these files is invented. The layout copies only our ASSUMPTIONS:
 Real keyword names come from scripts/inspect_fits.py on a real file (see docs/DATA_CHECKLIST.md).
 
 To exercise the hard parts of the pipeline, each fake exposure has a slightly different
-pointing AND a different sky rotation, and one source near WISE 0855 moves
-(EXAGGERATED: 60"/yr instead of the real ~8"/yr, so it is obvious in a test blink).
+pointing AND a different sky rotation, and the moving source is WISE 0855 itself, moving
+with its REAL SIMBAD proper motion (~8.2"/yr ≈ 1.3 px/yr). Its position per exposure is
+computed with astropy's apply_space_motion – independently of the frontend's JavaScript –
+so the app's "predicted position" overlay is a genuine end-to-end check.
 """
 
 from pathlib import Path
 
+import warnings
+
+import astropy.units as u
 import numpy as np
+from astropy.coordinates import SkyCoord
 from astropy.io import fits
 from astropy.time import Time
+from astropy.utils.exceptions import AstropyWarning
 from astropy.wcs import WCS
 
 OUT = Path(__file__).resolve().parents[1] / "data" / "fake"
@@ -31,7 +38,19 @@ WAVE_UM = {1: (0.75, 1.09), 2: (1.10, 1.62), 3: (1.63, 2.41),
            4: (2.42, 3.82), 5: (3.83, 4.41), 6: (4.42, 5.00)}   # ASSUMPTION
 FIRST_MJD = 60800.7
 N_EPOCHS = 9                                  # -> each detector gets 3 epochs
-MOVER_ARCSEC_PER_YR = (-60.0, 6.0)            # EXAGGERATED proper motion (RA*cosDec, Dec)
+# WISE 0855 – same SIMBAD values as frontend/js/targets.js (ICRS, J2000, pmra includes cos dec).
+WISE0855 = SkyCoord(ra=133.81890825 * u.deg, dec=-7.247048 * u.deg,
+                    pm_ra_cosdec=-8123.7 * u.mas / u.yr, pm_dec=673.2 * u.mas / u.yr,
+                    distance=2.28 * u.pc,          # ~1/parallax; only needed by apply_space_motion
+                    radial_velocity=0 * u.km / u.s, obstime=Time("J2000"), frame="icrs")
+
+
+def wise0855_at(mjd):
+    """Catalogue position of WISE 0855 at an MJD (astropy, not the JS formula)."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", AstropyWarning)
+        c = WISE0855.apply_space_motion(new_obstime=Time(mjd, format="mjd"))
+    return c.ra.deg, c.dec.deg
 
 rng = np.random.default_rng(42)
 N_STARS = 600
@@ -72,9 +91,7 @@ def main():
     for e in range(N_EPOCHS):
         # Survey-like cadence: 3 visit groups ~6 months apart, a few days within each group.
         mjd = FIRST_MJD + (e // 3) * 182.6 + (e % 3) * 2.3
-        years = (mjd - FIRST_MJD) / 365.25
-        mover_ra = CENTER_RA + MOVER_ARCSEC_PER_YR[0] * years / 3600 / np.cos(np.radians(CENTER_DEC))
-        mover_dec = CENTER_DEC + MOVER_ARCSEC_PER_YR[1] * years / 3600
+        mover_ra, mover_dec = wise0855_at(mjd)
         ras = np.append(star_ra, mover_ra)
         decs = np.append(star_dec, mover_dec)
 
@@ -106,7 +123,7 @@ def main():
             ])
             name = OUT / f"fake_e{e:02d}_D{det}.fits"
             hdul.writeto(name, overwrite=True)
-            print("wrote", name.name, f"mjd={mjd:.2f}")
+            print("wrote", name.name, f"mjd={mjd:.2f}  WISE 0855 at {mover_ra:.6f} {mover_dec:.6f}")
 
 
 if __name__ == "__main__":

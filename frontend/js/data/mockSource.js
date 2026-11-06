@@ -12,8 +12,10 @@ const PIXEL_SCALE_ARCSEC = 6.2;   // ASSUMPTION: ~6″/px – real value comes f
 const PSF_SIGMA_PX = 0.9;         // star blur (Gaussian), in pixels
 const NOISE_SIGMA = 1.0;          // background noise level (arbitrary units)
 
-// Real WISE 0855 moves ~8″/yr ≈ 1.3 px/yr – too subtle for a first test.
-// So the mock mover is EXAGGERATED to make the blink effect obvious.
+// At a RANDOM position the mock mover is EXAGGERATED (12 px/yr) so the blink effect is
+// obvious. If the field contains one of the known test objects, the mover IS that object
+// and moves with its REAL catalogue proper motion (WISE 0855: ~8″/yr ≈ 1.3 px/yr) – so the
+// predicted-track overlay can be checked, and the demo is honest about real speeds.
 const MOVER_SPEED_PX_PER_YEAR = 12;
 
 // ASSUMPTION (mock only): approximate wavelength range per detector, in µm.
@@ -34,6 +36,9 @@ const SURVEY_PERIOD_DAYS = 182.6; // SPHEREx re-maps the sky every ~6 months
 const N_SURVEYS = 3;
 const VISITS_PER_SURVEY = 4;      // a few visits a couple of days apart in each survey
 const FAKE_LATENCY_MS = 500;      // pretend we are waiting for a server
+
+import { targetsInField, positionAtEpoch } from "../targets.js";
+import { skyToCanvas, mjdToYear } from "../geometry.js";
 
 // =================================================================
 // Small helpers
@@ -222,6 +227,8 @@ function observe(ra, dec, fovArcmin) {
   const field = makeField(rng, size);
   const schedule = makeSchedule(rng);
   const midMjd = (schedule[0].mjd + schedule[schedule.length - 1].mjd) / 2;
+  const scale = (fovArcmin * 60) / size;
+  placeKnownTargets(field, { ra, dec, size, scale, midMjd, fovArcmin });
 
   const obs = schedule.map((o, i) => {
     const frameRng = mulberry32(seed + i + 1);          // separate noise per frame
@@ -233,10 +240,35 @@ function observe(ra, dec, fovArcmin) {
     return { ...o, pixels, fractionFlagged, flagMask };
   });
 
-  const run = { size, obs, scale: (fovArcmin * 60) / size };
+  const run = { size, obs, scale, field };
   runCache.clear();                                      // keep memory small: last query only
   runCache.set(key, run);
   return run;
+}
+
+/**
+ * If a known test object is inside the field, put it where the catalogue says:
+ *   mover-type (Barnard, eps Ind B, WISE 0855): the mock mover follows its proper motion;
+ *   variable-type (RW Aur, R Dra): the mock variable star sits at its position.
+ * Pixel convention as everywhere: north up, east LEFT, edge coordinates (centre = size/2).
+ */
+function placeKnownTargets(field, { ra, dec, size, scale, midMjd, fovArcmin }) {
+  const geo = { ra, dec, n: size, scaleArcsec: scale };
+  for (const t of targetsInField(ra, dec, fovArcmin, mjdToYear(midMjd))) {
+    const p = positionAtEpoch(t, mjdToYear(midMjd));
+    const { fx, fy } = skyToCanvas(p.ra, p.dec, geo);
+    if (t.type === "mover") {
+      field.mover.x0 = fx * size;
+      field.mover.y0 = fy * size;
+      field.mover.vx = -(t.pmra / 1000) / scale;     // east (+pmra) = towards the LEFT
+      field.mover.vy = -(t.pmdec / 1000) / scale;    // north (+pmdec) = UP
+      field.mover.knownAs = t.label;
+    } else {
+      field.variable.x = fx * size;
+      field.variable.y = fy * size;
+      field.variable.knownAs = t.label;
+    }
+  }
 }
 
 /** Random flagged pixels (as a 0/1 array) matching the requested fraction. */

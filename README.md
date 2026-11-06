@@ -1,5 +1,7 @@
 # SPHEREx Blink
 
+> **Notice:** this repository is a **personal practice / mock project** (built with AI assistance, Claude Code), started on 2026-11-05, **before** the NASA Space Apps 2026 hackathon (14-15 Nov 2026). It is not a competition submission.
+
 **NASA Space Apps Challenge 2026 – "Planet X and SPHEREx".**
 Enter a sky position → see NASA SPHEREx infrared images of that spot taken on different
 dates, flipped like a mini-video ("blinking"). Stars stay still; things that **move**
@@ -13,6 +15,7 @@ dates, flipped like a mini-video ("blinking"). Stars stay still; things that **m
 | **Difference** | Each image minus the median of images from *other* survey passes: still stars vanish, orange = "it is here now", blue = "it was here before / faded". |
 | **Stack** | Average of all dates: deeper, less noisy picture. |
 | **Trail** | Brightest value of each pixel over all dates: a mover leaves a **trail of dots**. |
+| **Predicted position** | For the test objects, green ticks show where the catalogue (SIMBAD position + proper motion) says the object must be on each frame's date, plus how far it moves in pixels. If the object sits on the ticks, the whole chain (archive → cutout → orientation → timing) is right. |
 | **All detectors** | One averaged thumbnail per detector (D1–D6, 0.75–5 µm); click to blink it. |
 | **Measure** | Click a source → its **spectrum** (brightness vs wavelength, per survey pass) and **light curve** (brightness vs date, per detector), plus a table. |
 | **Flags** | Show flagged pixels in red; optionally skip frames with > 1 % flagged pixels. |
@@ -35,7 +38,9 @@ ES modules don't load from `file://`, so always serve over http.
 > After editing JS/CSS, hard-reload with **Ctrl+F5** – the browser caches modules.
 
 The mock invents a star field per position with one moving source and one variable star
-(see `frontend/js/data/mockSource.js`). The header badge says **Mock data**.
+(see `frontend/js/data/mockSource.js`). At a random position the mover is exaggerated
+(12 px/yr) so the effect is obvious; at a **test object** the mover *is* that object and
+moves with its **real** catalogue speed (WISE 0855: 1.3 px/yr). The header badge says **Mock data**.
 
 ## Run – with the backend (Python 3.14, FastAPI)
 
@@ -46,7 +51,10 @@ py -m venv backend/.venv
 backend/.venv/Scripts/python.exe -m pip install -r backend/requirements.txt
 ```
 
-Test data – **fake** files (synthetic, NOT SPHEREx) until real ones are available:
+Test data – **fake** files (synthetic, NOT SPHEREx) until real ones are available.
+They contain WISE 0855 moving with its real SIMBAD proper motion, computed with astropy
+(independent of the frontend) – the app's green "predicted position" lands on it within
+~0.2 px:
 
 ```bash
 backend/.venv/Scripts/python.exe backend/scripts/make_test_fits.py
@@ -91,6 +99,9 @@ node scratch/test_coords.mjs
 node scratch/test_mock.mjs
 node scratch/test_measure.mjs
 ```
+
+`scratch/check_track.js` is a browser-console helper that measures, frame by frame, how far
+WISE 0855 is from its predicted position (use it again on real data).
 
 ## Project layout
 

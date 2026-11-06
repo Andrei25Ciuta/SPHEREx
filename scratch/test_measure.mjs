@@ -1,5 +1,7 @@
 // Tests for measure.js pure helpers + mock photometry. Run: node scratch/test_measure.mjs
-import { canvasToSky, groupIntoPasses } from "../frontend/js/features/measure.js";
+import { groupIntoPasses } from "../frontend/js/features/measure.js";
+import { canvasToSky, skyToCanvas, mjdToYear } from "../frontend/js/geometry.js";
+import { TARGETS, positionAtEpoch, targetsInField } from "../frontend/js/targets.js";
 import { aperturePhotometry } from "../frontend/js/data/mockSource.js";
 
 let fails = 0;
@@ -27,4 +29,26 @@ const m = aperturePhotometry(img, size, 15.5, 15.5, 2);
 ok(Math.abs(m.flux - 150) < 1e-6, `aperture recovers injected flux 150 (got ${m.flux})`);
 ok(aperturePhotometry(img, size, 0.5, 0.5, 2) !== null, "works near (not over) the edge");
 ok(aperturePhotometry(img, size, -20, -20, 2) === null, "returns null fully outside");
+// ---- geometry.js + targets.js (predicted track)
+const geo = { ra: 133.75976, dec: -7.24219, n: 49, scaleArcsec: 6.2 };
+for (const [fx, fy] of [[0.5, 0.5], [0.1, 0.9], [0.83, 0.27]]) {
+  const sky = canvasToSky(fx, fy, geo);
+  const back = skyToCanvas(sky.ra, sky.dec, geo);
+  ok(Math.abs(back.fx - fx) < 1e-9 && Math.abs(back.fy - fy) < 1e-9, `skyToCanvas inverts canvasToSky at (${fx}, ${fy})`);
+}
+const wrap = skyToCanvas(359.999, 0, { ra: 0.001, dec: 0, n: 100, scaleArcsec: 6 });
+ok(wrap.fx > 0.5 && wrap.fx < 0.52, `RA wrap: 359.999° is just WEST (right) of 0.001° (fx=${wrap.fx.toFixed(4)})`);
+ok(Math.abs(mjdToYear(51544.5) - 2000) < 1e-12 && Math.abs(mjdToYear(51544.5 + 365.25) - 2001) < 1e-12, "mjdToYear: J2000 = MJD 51544.5, Julian years");
+
+const wise = TARGETS.find((t) => t.id === "wise0855");
+const c26 = positionAtEpoch(wise, 2026.0);
+ok(targetsInField(c26.ra, c26.dec, 5, 2026.0).map((t) => t.id).join() === "wise0855", "WISE 0855 found in its own 5′ field");
+ok(targetsInField(c26.ra + 1, c26.dec, 5, 2026.0).length === 0, "nothing found 1° away");
+// One year of WISE 0855 motion = 8.15"/yr -> on a 6.2"/px image about 1.3 px, mostly to the RIGHT (west).
+const a = positionAtEpoch(wise, 2025.5), b = positionAtEpoch(wise, 2026.5);
+const pa = skyToCanvas(a.ra, a.dec, geo), pb = skyToCanvas(b.ra, b.dec, geo);
+const dxPx = (pb.fx - pa.fx) * geo.n, dyPx = (pb.fy - pa.fy) * geo.n;
+ok(Math.abs(Math.hypot(dxPx, dyPx) - 8.151 / 6.2) < 0.01, `WISE 0855 moves ${Math.hypot(dxPx, dyPx).toFixed(3)} px/yr (expected 1.315)`);
+ok(dxPx > 1.2 && dyPx < 0, "…towards the right (west, pmra < 0) and slightly up (north, pmdec > 0)");
+
 process.exit(fails ? 1 : 0);

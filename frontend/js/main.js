@@ -7,7 +7,8 @@
 //   save / record / copy link -> exporters.js
 
 import { parseRA, parseDec, formatRA, formatDec } from "./coords.js";
-import { TARGETS, positionAtEpoch, SPHEREX_REF_EPOCH } from "./targets.js";
+import { TARGETS, positionAtEpoch, SPHEREX_REF_EPOCH, targetsInField, totalProperMotion } from "./targets.js";
+import { skyToCanvas, mjdToYear } from "./geometry.js";
 import { readUrlState, writeUrlState } from "./urlState.js";
 import { getCutouts, listDetectors } from "./data/getCutouts.js";
 import { DATA_SOURCE } from "./config.js";
@@ -350,12 +351,56 @@ function framesFor(detector) {
   return { frames: kept, skipped: frames.length - kept.length };
 }
 
+// ---------------------------------------------------------------
+// Predicted track of known objects (SIMBAD position + proper motion, per frame date)
+// ---------------------------------------------------------------
+$("show-track").addEventListener("change", (e) => player.setShowTracks(e.target.checked));
+
+/**
+ * For every known test object inside the field: where SHOULD it be on each frame's date?
+ * If the object sits on the green ticks in every frame, the whole chain (archive query,
+ * cutout, orientation, timing) is right. It also tells how far it moves – in pixels.
+ */
+function updateTracks() {
+  const info = $("track-info");
+  const box = $("show-track");
+  if (!currentQuery || !currentFrames.length || !player.naturalSize) {
+    player.setTracks([]); info.textContent = ""; box.disabled = true; return;
+  }
+  const n = player.naturalSize;
+  const scaleArcsec = currentFrames[0].pixelScaleArcsec ?? (currentQuery.fov * 60) / n;
+  const geo = { ra: currentQuery.ra, dec: currentQuery.dec, n, scaleArcsec };
+  const midYear = mjdToYear((currentFrames[0].mjd + currentFrames.at(-1).mjd) / 2);
+  const found = targetsInField(currentQuery.ra, currentQuery.dec, currentQuery.fov, midYear);
+
+  player.setTracks(found.map((t) => ({
+    label: t.label,
+    points: currentFrames.map((f) => {
+      const p = positionAtEpoch(t, mjdToYear(f.mjd));
+      return skyToCanvas(p.ra, p.dec, geo);
+    }),
+  })));
+  box.disabled = found.length === 0;
+
+  info.textContent = found.map((t) => {
+    const pm = totalProperMotion(t);
+    const years = (currentFrames.at(-1).mjd - currentFrames[0].mjd) / 365.25;
+    const spanPx = (pm * years) / scaleArcsec;
+    let line = `${t.label}: catalogue motion ${pm.toFixed(2)}″/yr = ${(pm / scaleArcsec).toFixed(2)} px/yr ` +
+      `→ ${spanPx.toFixed(1)} px between the first and last ${currentDetector} frame (${years.toFixed(1)} yr).`;
+    if (spanPx < 0.3) line += " Practically still – look for brightness changes instead.";
+    else if (spanPx < 2) line += " Less than 2 pixels: use Difference and step with ← → to see it.";
+    return line;
+  }).join(" ");
+}
+
 /** Show only the frames of one detector in the player. */
 async function showDetector(detector) {
   const token = loadToken;               // if a new load starts while we wait, give up
   currentDetector = detector;
   const { frames, skipped } = framesFor(detector);
   currentFrames = frames;
+  player.setTracks([]);                  // old track has the wrong number of points
   player.pause();
   setPlayerEnabled(false);
   markOverview(detector);
@@ -376,6 +421,7 @@ async function showDetector(detector) {
   frameSlider.max = String(currentFrames.length - 1);
   hideOverlay();
   setPlayerEnabled(true);
+  updateTracks();
   // Re-apply the mode: it may need ≥ 2 frames, and the info line depends on it.
   setMode(player.mode, { updateUrl: false });
 
@@ -523,6 +569,8 @@ async function loadData(query) {
   player.pause();
   setPlayerEnabled(false);
   clearMarker();
+  player.setTracks([]);
+  $("track-info").textContent = "";
   $("overview").hidden = true;
   showOverlay("Loading images…", `RA ${formatRA(query.ra)}  Dec ${formatDec(query.dec)}  ·  ${query.fov}′ field`);
 

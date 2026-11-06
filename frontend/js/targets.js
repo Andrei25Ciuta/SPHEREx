@@ -20,7 +20,7 @@
 
 export const TARGETS = [
   {
-    id: "barnard",
+    id: "barnard", type: "mover",
     label: "Barnard's Star",
     kind: "Nearby star, fastest proper motion known",
     simbadId: "NAME Barnard's star",
@@ -29,7 +29,7 @@ export const TARGETS = [
     coordRef: "2020yCat.1350....0G",
   },
   {
-    id: "epsindb",
+    id: "epsindb", type: "mover",
     label: "Epsilon Indi B",
     kind: "Brown dwarf binary",
     simbadId: "eps Ind B",
@@ -38,7 +38,7 @@ export const TARGETS = [
     coordRef: "2020yCat.1350....0G",
   },
   {
-    id: "wise0855",
+    id: "wise0855", type: "mover",
     label: "WISE 0855",
     kind: "Coldest known brown dwarf",
     simbadId: "WISE J085510.83-071442.5",   // SIMBAD main_id: WISEA J085510.74-071442.5
@@ -47,7 +47,7 @@ export const TARGETS = [
     coordRef: "2021ApJS..253....7K",
   },
   {
-    id: "rwaur",
+    id: "rwaur", type: "variable",
     label: "RW Aurigae",
     kind: "Variable young star",
     simbadId: "RW Aur",
@@ -56,7 +56,7 @@ export const TARGETS = [
     coordRef: "2007A&A...474..653V",
   },
   {
-    id: "rdra",
+    id: "rdra", type: "variable",
     label: "R Draconis",
     kind: "Mira variable star",
     simbadId: "R Dra",
@@ -86,4 +86,23 @@ export function positionAtEpoch(target, epoch = SPHEREX_REF_EPOCH) {
   let ra = target.ra + (target.pmra * dt) / MAS_PER_DEG / Math.cos(meanDecRad);
   ra = ((ra % 360) + 360) % 360;                               // keep RA in [0, 360)
   return { ra, dec };
+}
+
+/** Total proper motion in arcsec/yr. */
+export const totalProperMotion = (t) => Math.hypot(t.pmra, t.pmdec) / 1000;
+
+/**
+ * Known targets that fall inside a square field (side fovArcmin) centred on (ra, dec)
+ * at the given epoch. A small margin keeps objects whose track only clips the edge.
+ */
+export function targetsInField(ra, dec, fovArcmin, epoch = SPHEREX_REF_EPOCH) {
+  const half = (fovArcmin * 60) / 2 * 1.05;               // arcsec
+  return TARGETS.filter((t) => {
+    const p = positionAtEpoch(t, epoch);
+    let dRa = p.ra - ra;
+    if (dRa > 180) dRa -= 360; else if (dRa < -180) dRa += 360;
+    const east = dRa * 3600 * Math.cos((dec * Math.PI) / 180);
+    const north = (p.dec - dec) * 3600;
+    return Math.abs(east) <= half && Math.abs(north) <= half;
+  });
 }

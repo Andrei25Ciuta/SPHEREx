@@ -9,16 +9,17 @@
 
 import { getPhotometry } from "../data/getCutouts.js";
 import { formatRA, formatDec } from "../coords.js";
+import { canvasToSky } from "../geometry.js";
 
 const PLOTLY_URL = "https://cdn.jsdelivr.net/npm/plotly.js-basic-dist-min@2.35.2/plotly-basic.min.js";
 
 // Categorical colours (dark mode), validated for colour-blind separation on our
-// chart surface #1a1d2e (dataviz validate_palette.js: all checks pass).
+// chart surface #121913 (dataviz validate_palette.js: all checks pass).
 // Colour follows the ENTITY: detector Dn always gets slot n, whatever is on screen.
 const SERIES = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300"];
 const PASS_SYMBOLS = ["circle", "square", "diamond"];     // second cue besides colour
 const MAX_PASSES = 3;      // > 3 colours in a scatter are not reliably distinguishable
-const TEXT = "#e5e8f1", TEXT_MUTED = "#9ca2b3", GRID = "rgba(160,170,200,0.12)", SURFACE = "#1a1d2e";
+const TEXT = "#DDEBDF", TEXT_MUTED = "#98AA9D", GRID = "rgba(196,237,206,0.12)", SURFACE = "#121913";
 export const APERTURE_RADIUS_PX = 2;
 
 let plotlyPromise = null;
@@ -36,20 +37,8 @@ function loadPlotly() {
   return plotlyPromise;
 }
 
-/**
- * Canvas click -> sky position. Image convention (mock AND backend): north up, east LEFT,
- * the requested RA/Dec exactly in the centre.
- *   fx, fy        : click position as a fraction of the canvas (0..1, from top-left)
- *   n             : image size in pixels;  scaleArcsec: arcsec per image pixel
- */
-export function canvasToSky(fx, fy, { ra, dec, n, scaleArcsec }) {
-  const dxArcsec = (fx * n - n / 2) * scaleArcsec;     // + = towards the right = WEST
-  const dyArcsec = (fy * n - n / 2) * scaleArcsec;     // + = down = SOUTH
-  const decOut = dec - dyArcsec / 3600;
-  let raOut = ra - dxArcsec / 3600 / Math.cos((dec * Math.PI) / 180);
-  raOut = ((raOut % 360) + 360) % 360;
-  return { ra: raOut, dec: decOut, eastArcsec: -dxArcsec, northArcsec: -dyArcsec };
-}
+// Click -> sky conversion lives in geometry.js (shared with the predicted-track overlay).
+export { canvasToSky };
 
 /** Split points into survey passes: a gap of > gapDays starts a new pass. */
 export function groupIntoPasses(points, gapDays = 30) {
@@ -68,7 +57,7 @@ const detIndex = (det) => Math.max(0, (parseInt(String(det).replace(/\D/g, ""), 
 function baseLayout(xTitle, yTitle, xType) {
   const axis = (title) => ({
     title: { text: title, font: { size: 12, color: TEXT_MUTED } },
-    color: TEXT_MUTED, gridcolor: GRID, zerolinecolor: "rgba(160,170,200,0.3)", linecolor: GRID,
+    color: TEXT_MUTED, gridcolor: GRID, zerolinecolor: "rgba(196,237,206,0.3)", linecolor: GRID,
     tickfont: { size: 11, color: TEXT_MUTED },
   });
   return {
@@ -78,7 +67,7 @@ function baseLayout(xTitle, yTitle, xType) {
     xaxis: { ...axis(xTitle), type: xType },
     yaxis: axis(yTitle),
     legend: { orientation: "h", y: 1.02, yanchor: "bottom", x: 0, font: { size: 11, color: TEXT } },
-    hoverlabel: { bgcolor: "#0d0f1a", bordercolor: "#3a3f55", font: { color: TEXT, size: 12 } },
+    hoverlabel: { bgcolor: "#0C110D", bordercolor: "#2A3A2F", font: { color: TEXT, size: 12 } },
     showlegend: true,
   };
 }
