@@ -1,7 +1,7 @@
 """Generate our OWN nebula image (no third-party pixels, so no licence problem).
 
-Palette (green / gold / mint on near-black) was sampled from a reference photo's colours;
-only the colours are reused, no pixels, no composition copied.
+Palette: deep teal #244855, brand orange #E64833, rust #874F41, pale teal #90AEAD and cream #FBE9D0
+on near-black teal (from the user's colour references); only colours are used, no pixels copied.
 
   hero  : frontend/img/header-nebula-hd.jpg   2560x1440
   page  : frontend/img/bg-nebula.jpg          1920x1080, darkened so UI text keeps its contrast
@@ -97,11 +97,14 @@ def ramp(t, stops):
 
 
 col = ramp(density, [
-    (0.00, (0.006, 0.010, 0.008)), (0.18, (0.020, 0.075, 0.050)), (0.42, (0.060, 0.260, 0.150)),
-    (0.68, (0.300, 0.640, 0.400)), (0.88, (0.600, 0.880, 0.690)), (1.00, (0.920, 1.000, 0.940))])
-col = col * (1 - 0.5 * teal_zone[..., None]) + np.array([0.03, 0.50, 0.46], np.float32) * (density * teal_zone)[..., None] * 0.8
-gold_c = np.array([0.90, 0.74, 0.30], np.float32)
-col = col * (1 - 0.6 * gold[..., None]) + gold_c * (0.95 * gold ** 1.0 + 0.9 * gold * density)[..., None]
+    (0.00, (0.010, 0.022, 0.030)), (0.18, (0.040, 0.105, 0.135)), (0.42, (0.140, 0.282, 0.333)),
+    (0.68, (0.400, 0.560, 0.560)), (0.88, (0.700, 0.800, 0.780)), (1.00, (0.985, 0.915, 0.815))])
+col = col * (1 - 0.35 * teal_zone[..., None]) + np.array([0.53, 0.31, 0.25], np.float32) * (density * teal_zone)[..., None] * 0.9
+rust_c = np.array([0.53, 0.31, 0.25], np.float32)
+orange_c = np.array([0.92, 0.30, 0.22], np.float32)
+g8 = gold[..., None] ** 0.8
+warm_c = rust_c * (1 - g8) + orange_c * g8
+col = col * (1 - 0.6 * gold[..., None]) + warm_c * (0.95 * gold ** 1.0 + 0.9 * gold * density)[..., None]
 col = 1 - np.exp(-1.55 * col)                                    # soft tone-map
 col = np.clip(col, 0, 1) ** 1.12
 
@@ -120,7 +123,7 @@ def splat(cx, cy, color, peak, sigma):
     layer[ys[0]:ys[-1] + 1, xs[0]:xs[-1] + 1, :] += k[:, :, None] * (np.asarray(color, np.float32) * 255.0 * peak)
 
 
-tints = [(1.0, 1.0, 1.0), (0.80, 1.0, 0.88), (1.0, 0.93, 0.74), (0.84, 0.93, 1.0)]
+tints = [(1.0, 0.93, 0.82), (0.80, 0.92, 0.92), (1.0, 1.0, 1.0), (1.0, 0.76, 0.62)]
 
 
 def place(n, correlated):
@@ -157,7 +160,7 @@ if len(cand):
     w = gold[cand[:, 0], cand[:, 1]] ** 2
     for i in rng.choice(len(cand), size=min(3200, len(cand)), replace=False, p=w / w.sum()):
         y, x = cand[i]
-        splat(float(x), float(y), (1.0, 0.86, 0.45), rng.uniform(0.25, 0.75), rng.uniform(0.6, 0.9))
+        splat(float(x), float(y), (1.0, 0.72, 0.55), rng.uniform(0.25, 0.75), rng.uniform(0.6, 0.9))
 
 layer = np.clip(layer, 0, 255)
 res = 255 - (255 - col * 255) * (255 - layer) / 255                # screen blend

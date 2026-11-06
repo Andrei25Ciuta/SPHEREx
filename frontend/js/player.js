@@ -282,7 +282,7 @@ export class BlinkPlayer {
   _drawTracks() {
     const { ctx, canvas } = this;
     const W = canvas.width, H = canvas.height;
-    const COLOR = "hsl(140 85% 58%)";
+    const COLOR = "#FBE9D0";
     ctx.save();
     ctx.shadowColor = "#000"; ctx.shadowBlur = 3;
     for (const t of this.tracks) {

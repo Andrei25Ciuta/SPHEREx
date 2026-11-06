@@ -14,12 +14,12 @@ import { canvasToSky } from "../geometry.js";
 const PLOTLY_URL = "https://cdn.jsdelivr.net/npm/plotly.js-basic-dist-min@2.35.2/plotly-basic.min.js";
 
 // Categorical colours (dark mode), validated for colour-blind separation on our
-// chart surface #121913 (dataviz validate_palette.js: all checks pass).
+// chart surface #0F2027 (dataviz validate_palette.js: all checks pass).
 // Colour follows the ENTITY: detector Dn always gets slot n, whatever is on screen.
 const SERIES = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300"];
 const PASS_SYMBOLS = ["circle", "square", "diamond"];     // second cue besides colour
 const MAX_PASSES = 3;      // > 3 colours in a scatter are not reliably distinguishable
-const TEXT = "#DDEBDF", TEXT_MUTED = "#98AA9D", GRID = "rgba(196,237,206,0.12)", SURFACE = "#121913";
+const TEXT = "#FBE9D0", TEXT_MUTED = "#90AEAD", GRID = "rgba(251,233,208,0.12)", SURFACE = "#0F2027";
 export const APERTURE_RADIUS_PX = 2;
 
 let plotlyPromise = null;
@@ -57,7 +57,7 @@ const detIndex = (det) => Math.max(0, (parseInt(String(det).replace(/\D/g, ""), 
 function baseLayout(xTitle, yTitle, xType) {
   const axis = (title) => ({
     title: { text: title, font: { size: 12, color: TEXT_MUTED } },
-    color: TEXT_MUTED, gridcolor: GRID, zerolinecolor: "rgba(196,237,206,0.3)", linecolor: GRID,
+    color: TEXT_MUTED, gridcolor: GRID, zerolinecolor: "rgba(251,233,208,0.3)", linecolor: GRID,
     tickfont: { size: 11, color: TEXT_MUTED },
   });
   return {
@@ -67,7 +67,7 @@ function baseLayout(xTitle, yTitle, xType) {
     xaxis: { ...axis(xTitle), type: xType },
     yaxis: axis(yTitle),
     legend: { orientation: "h", y: 1.02, yanchor: "bottom", x: 0, font: { size: 11, color: TEXT } },
-    hoverlabel: { bgcolor: "#0C110D", bordercolor: "#2A3A2F", font: { color: TEXT, size: 12 } },
+    hoverlabel: { bgcolor: "#0E1C22", bordercolor: "#2C4A57", font: { color: TEXT, size: 12 } },
     showlegend: true,
   };
 }

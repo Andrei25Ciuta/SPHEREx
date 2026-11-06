@@ -9,24 +9,25 @@
 /* ---------- 1. Design tokens ---------- */
 :root {
   /* Colors in HSL so we can tweak lightness/alpha easily */
-  --bg:          #0C110D;                    /* near-black with the photo's green tint */
-  --bg-2:        #141B15;
-  --surface:     #172019;                    /* panels */
-  --raised:      #1E2A22;
-  --field:       #101712;                    /* inputs, small cells */
-  --border:      rgb(196 237 206 / .16);
-  --text:        #DDEBDF;
-  --text-muted:  #98AA9D;
-  --accent:      #54A66B;                    /* emerald, from the photo */
-  --accent-hi:   #8FC277;                    /* light green, hover */
-  --accent-rgb:  84 166 107;
-  --accent-2:    #D9BE5A;                    /* gold, from the photo */
-  --gold-rgb:    217 190 90;
-  --mint:        #C4EDCE;                    /* nebula glow */
-  --on-accent:   #0C110D;                    /* text on green / gold fills */
-  --warn:        hsl(38 85% 60%);
-  --danger:      hsl(355 85% 66%);
-  --success:     hsl(145 55% 58%);
+  --bg:          #0E1C22;                    /* near-black teal */
+  --bg-2:        #132830;
+  --surface:     #17303A;                    /* panels */
+  --raised:      #1E3D49;
+  --field:       #0F2027;                    /* inputs, small cells */
+  --border:      rgb(251 233 208 / .14);
+  --text:        #FBE9D0;                    /* cream */
+  --text-muted:  #90AEAD;                    /* pale teal */
+  --accent:      #EA4F39;                    /* brand orange: fills, dark text on it 4.7:1 */
+  --accent-hi:   #F4806A;                    /* lighter coral: text on panels 5.4:1, hover */
+  --accent-rgb:  234 79 57;
+  --accent-2:    #90AEAD;                    /* pale teal */
+  --alt-rgb:     144 174 173;
+  --rust:        #874F41;
+  --on-accent:   #0E1C22;                    /* text on orange fills */
+  --display:     "Oswald", "Space Grotesk", "Inter", sans-serif;
+  --warn:        #F2B07B;
+  --danger:      #FF8A75;
+  --success:     #90AEAD;
 
   --radius:      16px;
   --radius-sm:   10px;
@@ -45,7 +46,7 @@ body {
   min-height: 100vh;
   font-family: var(--font-body);
   color: var(--text);
-  background: radial-gradient(ellipse at 85% 0%, rgb(var(--accent-rgb) / .09) 0%, transparent 55%),
+  background: radial-gradient(ellipse at 85% 0%, rgb(var(--accent-rgb) / .07) 0%, transparent 55%),
               var(--bg);
   line-height: 1.5;
 }
@@ -108,9 +109,9 @@ kbd {
 
 .badge {
   font-size: .8rem; font-weight: 600; padding: .35rem .75rem; border-radius: 999px;
-  color: var(--warn); background: hsl(35 95% 60% / .12); border: 1px solid hsl(35 95% 60% / .35);
+  color: var(--warn); background: rgb(242 176 123 / .12); border: 1px solid rgb(242 176 123 / .35);
 }
-.badge.real { color: var(--success); background: hsl(150 65% 55% / .12); border-color: hsl(150 65% 55% / .35); }
+.badge.real { color: var(--success); background: rgb(var(--alt-rgb) / .14); border-color: rgb(var(--alt-rgb) / .4); }
 
 .layout {
   display: grid;
@@ -215,7 +216,7 @@ output { font-weight: 600; color: var(--accent); }
 /* Hint box */
 .hint {
   margin-top: 1.5rem; padding: .9rem 1rem; border-radius: var(--radius-sm);
-  background: rgb(var(--gold-rgb) / .07); border: 1px solid rgb(var(--gold-rgb) / .25);
+  background: rgb(var(--alt-rgb) / .07); border: 1px solid rgb(var(--alt-rgb) / .25);
   font-size: .88rem;
 }
 .hint summary { cursor: pointer; font-weight: 600; color: var(--accent-2); }
@@ -234,7 +235,7 @@ output { font-weight: 600; color: var(--accent); }
   overflow: hidden;
   background: #000;
   border: 1px solid var(--border);
-  box-shadow: inset 0 0 60px #050805;
+  box-shadow: inset 0 0 60px #04090c;
 }
 #blink-canvas {
   width: 100%; height: 100%; display: block;
@@ -255,7 +256,7 @@ output { font-weight: 600; color: var(--accent); }
   position: absolute; inset: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   text-align: center; padding: 1.5rem;
-  background: rgb(5 8 5 / .78);
+  background: rgb(4 9 12 / .78);
   transition: opacity .3s var(--ease);
 }
 .stage-overlay.hidden { opacity: 0; pointer-events: none; }
@@ -265,7 +266,7 @@ output { font-weight: 600; color: var(--accent); }
 .overlay-progress {
   width: min(220px, 70%); height: 6px; margin-top: .9rem;
   appearance: none; -webkit-appearance: none; border: none; border-radius: 999px;
-  background: rgb(196 237 206 / .15); overflow: hidden;
+  background: rgb(251 233 208 / .15); overflow: hidden;
 }
 .overlay-progress::-webkit-progress-bar { background: transparent; }
 .overlay-progress::-webkit-progress-value { background: var(--accent); border-radius: 999px; }
@@ -417,7 +418,7 @@ output { font-weight: 600; color: var(--accent); }
 .measure p, .context p { margin: .4rem 0; }
 .measure-pos { font-variant-numeric: tabular-nums; font-size: .88rem; }
 .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: .6rem; }
-.chart { margin: 0; padding: .6rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #121913; }
+.chart { margin: 0; padding: .6rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #0F2027; }
 .chart figcaption { font-size: .85rem; font-weight: 600; margin: 0 0 .3rem .3rem; }
 .chart-box { width: 100%; height: 300px; }
 .table-view { margin-top: .6rem; font-size: .85rem; }
@@ -448,13 +449,13 @@ output { font-weight: 600; color: var(--accent); }
   color: var(--text-muted);
 }
 .track-info:empty { display: none; }
-.track-info::before { content: "◆ "; color: hsl(140 85% 58%); }
+.track-info::before { content: "◆ "; color: #FBE9D0; }
 
 /* =========================================================
    8. Hero header (photo banner)
    ========================================================= */
 .hero {
-  --ink: #0C110D; --cta: var(--accent-2); --cta-hover: var(--accent-hi); --peach: var(--accent-2);
+  --ink: #0E1C22; --cta: var(--accent); --cta-hover: var(--accent-hi); --peach: var(--accent-hi);
   position: relative; isolation: isolate; overflow: hidden;
   min-height: clamp(400px, 62vh, 620px);
   display: flex; flex-direction: column; justify-content: space-between;
@@ -463,7 +464,7 @@ output { font-weight: 600; color: var(--accent); }
 /* Legibility scrim behind the top bar (functional, not decorative) */
 .hero::before {
   content: ""; position: absolute; inset: 0 0 auto 0; height: 38%; z-index: -1;
-  background: linear-gradient(to bottom, rgb(12 17 13 / .78), transparent);
+  background: linear-gradient(to bottom, rgb(14 28 34 / .78), transparent);
 }
 .hero-top {
   display: flex; align-items: center; justify-content: space-between; gap: 1rem;
@@ -483,7 +484,7 @@ output { font-weight: 600; color: var(--accent); }
   margin: 0 0 .8rem; font-size: .75rem; letter-spacing: .2em; text-transform: uppercase; color: var(--peach);
 }
 .hero h1 {
-  font-size: clamp(3rem, 9vw, 6.5rem); line-height: .92; letter-spacing: -.04em; font-weight: 700;
+  font-family: var(--display); font-size: clamp(3.4rem, 10vw, 7.6rem); line-height: .9; letter-spacing: -.01em; font-weight: 700;
 }
 .hero h1 span { display: block; }
 .hero-tag { margin: .9rem 0 0; max-width: 28em; font-size: clamp(1rem, 1.6vw, 1.25rem); color: #fff; }
@@ -519,14 +520,76 @@ html { scroll-behavior: smooth; }
 body::before {
   content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none;
   background:
-    linear-gradient(to bottom, rgb(12 17 13 / .30), rgb(12 17 13 / .78)),
+    linear-gradient(to bottom, rgb(14 28 34 / .30), rgb(14 28 34 / .78)),
     url("../img/bg-nebula.jpg") center / cover no-repeat;
 }
 /* Panels let a little of the background through */
 .panel {
-  background: rgb(23 32 25 / .86);
+  background: rgb(23 48 58 / .86);
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
 @media (max-width: 560px) {
   .hero::after { transform: scale(1.12); transform-origin: 62% 40%; }
 }
+
+/* =========================================================
+   10. Hero extras (nav, scroll ring) and info sections
+   ========================================================= */
+.hero-nav { display: flex; gap: 1.4rem; font-size: .9rem; }
+.hero-nav a { color: var(--text); text-decoration: none; font-weight: 500; }
+.hero-nav a:hover { color: var(--accent-hi); text-decoration: underline; }
+.hero-scroll {
+  position: absolute; right: clamp(1rem, 7vw, 6rem); bottom: 4.2rem; width: 104px; height: 104px;
+  display: grid; place-items: center; color: var(--accent); text-decoration: none;
+}
+.hero-scroll:hover { color: var(--accent-hi); }
+.hero-scroll svg { width: 100%; height: 100%; }
+.hero-scroll .ring { transform-origin: 50% 50%; animation: spin-slow 40s linear infinite; }
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .hero-scroll .ring { animation: none; } }
+@media (max-width: 720px) { .hero-scroll, .hero-nav { display: none; } }
+
+.info { max-width: 1240px; margin: 0 auto; padding: clamp(2rem, 5vw, 4rem) clamp(1rem, 3vw, 2rem) 0; }
+.info:last-of-type { padding-bottom: clamp(1.5rem, 4vw, 3rem); }
+.info-box {
+  background: rgb(23 48 58 / .86); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border); padding: clamp(1.2rem, 3vw, 2.6rem);
+}
+.info-kicker { margin: 0 0 .6rem; font-size: .75rem; letter-spacing: .22em; text-transform: uppercase; color: var(--accent-hi); }
+.info h2 {
+  margin: 0 0 1rem; font-family: var(--display); font-weight: 700; color: var(--text);
+  font-size: clamp(2rem, 5vw, 3.6rem); line-height: 1; letter-spacing: -.005em;
+}
+.info h2::after { content: ""; display: block; width: 64px; height: 4px; margin-top: 1rem; background: var(--accent); }
+.info h3 { margin: 0 0 .5rem; font-family: var(--display); font-weight: 500; font-size: 1.3rem; letter-spacing: .02em; color: var(--text); }
+.info p { margin: 0 0 1rem; max-width: 64ch; color: var(--text-muted); }
+.info strong { color: var(--text); font-weight: 600; }
+.info p.info-lead { color: var(--text); font-size: clamp(1.05rem, 1.6vw, 1.3rem); line-height: 1.55; }
+.info-top { display: grid; grid-template-columns: 1.1fr 1fr; gap: clamp(1.2rem, 4vw, 3rem); align-items: start; }
+.steps { list-style: none; counter-reset: step; margin: 0; padding: 0; display: grid; gap: 1rem; }
+.steps li { counter-increment: step; position: relative; padding-left: 3.4rem; color: var(--text-muted); }
+.steps li::before {
+  content: counter(step, decimal-leading-zero); position: absolute; left: 0; top: -.25rem;
+  font-family: var(--display); font-weight: 700; font-size: 1.9rem; color: var(--accent-hi);
+}
+.steps b { display: block; color: var(--text); font-weight: 600; }
+.info-cols {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: clamp(1rem, 3vw, 2rem);
+  margin-top: clamp(1.4rem, 3vw, 2.4rem); padding-top: clamp(1.2rem, 3vw, 2rem); border-top: 1px solid var(--border);
+}
+.info-cols p { margin-bottom: 0; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1rem; margin: 1.4rem 0 0; padding: 0; list-style: none; }
+.stats li { padding-left: .8rem; border-left: 3px solid var(--accent); }
+.stats b { display: block; font-family: var(--display); font-weight: 700; font-size: clamp(1.8rem, 3.4vw, 2.6rem); line-height: 1; color: var(--text); }
+.stats span { font-size: .82rem; letter-spacing: .04em; color: var(--text-muted); }
+.det-table { width: 100%; margin-top: .4rem; border-collapse: collapse; font-size: .92rem; font-variant-numeric: tabular-nums; }
+.det-table th, .det-table td { padding: .5rem .7rem; text-align: left; border-bottom: 1px solid var(--border); }
+.det-table th { font-weight: 500; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
+.det-table td { color: var(--text); }
+.det-table td:first-child { font-family: var(--display); font-weight: 700; color: var(--accent-hi); }
+.det-table td:last-child { color: var(--text-muted); }
+.info-note { font-size: .8rem !important; margin-top: .6rem !important; }
+.info-links { display: flex; flex-wrap: wrap; gap: .8rem; margin-top: 1rem; }
+.info-links a { padding: .5rem .9rem; border: 1px solid var(--border); color: var(--text); text-decoration: none; font-weight: 500; }
+.info-links a:hover { border-color: var(--accent); color: var(--accent-hi); }
+@media (max-width: 860px) { .info-top { grid-template-columns: 1fr; } }

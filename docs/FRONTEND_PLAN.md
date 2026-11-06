@@ -67,22 +67,26 @@ Totuși „public-facing” înseamnă că o persoană fără pregătire trebuie
 
 **Concluzie de produs:** vrei ceva mai **atmosferic și mai jucăuș** decât aceste unelte, dar **tot precis**. Atmosfera vine din culoare, ierarhie, adâncime și detalii de interfață; nu din decor.
 
-### 0.4b Paleta aplicată (7 nov): derivată din poza din header
+### 0.4b Paleta aplicată (7 nov, versiunea 3): „retro-futurist” din referința Prometheus
 
-Decizia ta: paleta site-ului se potrivește cu poza și cu headerul (cea de mai jos înlocuiește opțiunile A/B/C de după). Culorile vin din **pixelii pozei** (analiză automată) și din ideile din articolul Visme (schema pe trei culori: una principală, una complementară de fundal, una de accent; 3–5 culori).
+Decizia ta: **fără verde**; headerul, fundalul și paleta se schimbă în culorile din referința Prometheus (`#244855`, `#E64833`, `#874F41`, `#90AEAD`, `#FBE9D0`). Înlocuiește paleta verde de mai înainte și opțiunile A/B/C de după.
 
-| Rol | Culoare | Origine / verificare |
+| Rol | Culoare | Verificare (contrast WCAG) |
 |---|---|---|
-| Fundal | `#0C110D` | tentă verde-neagră medie a pozei |
-| Panou / ridicat / câmp | `#172019` / `#1E2A22` / `#101712` | trepte ale aceleiași nuanțe |
-| Text / secundar | `#DDEBDF` (15,5:1) / `#98AA9D` (6,8:1 pe panou) | contrast calculat |
-| Accent (umpleri, butoane) | **`#54A66B`** (verde din poză); hover `#8FC277` | text închis pe el 6,4:1; ca text pe fundal 6,4:1 |
-| Accent 2 (aur) | **`#D9BE5A`** | aurul din nebuloasă; buton „Start exploring” 10,4:1 |
-| Strălucire | `#C4EDCE` | mintul din centrul nebuloasei |
+| Fundal | `#0E1C22` (teal foarte închis, din `#244855`) | — |
+| Panou / ridicat / câmp | `#17303A` / `#1E3D49` / `#0F2027` | — |
+| Text | `#FBE9D0` (cremă) | 14,6:1 pe fundal, 11,6:1 pe panou |
+| Text secundar | `#90AEAD` (teal pal) | 7,3:1 pe fundal, 5,8:1 pe panou |
+| Accent, umpleri | **`#EA4F39`** (portocaliul brandului, puțin mai deschis decât `#E64833` ca să treacă contrastul) | text închis `#0E1C22` pe el: **4,7:1**; ca text pe fundal 4,7:1, **dar doar 3,7:1 pe panou** |
+| Accent pentru text pe panouri / hover | **`#F4806A`** | 5,4:1 pe panou |
+| Rugini | `#874F41` | folosit în nebuloasă; doar 2,7:1 ca text, deci nu se folosește ca text |
 
-- Graficele (`measure.js`) folosesc fundalul `#121913`; paleta pe detectoare a fost **revalidată** pe el (toate verificările trec).
-- Culorile de **date** din imagine (portocaliu / albastru la Difference, verde la poziția prezisă, galben la apertură) rămân neschimbate.
-- Imaginea din header și fundalul paginii sunt **generate de noi** (`scratch/make_nebula.py`, 2560×1440: gaz cu zgomot fractal cu deformare dublă, filamente aurii, stele ascuțite cu raze); culorile au fost eșantionate din poza de referință, **fără pixeli din ea** (poza venea dintr-un clip stock Getty, deci nu putea fi publicată). Fundalul paginii (`bg-nebula.jpg`) e întunecat în trepte, iar panourile sunt ușor transparente.
+- **Titluri:** font condensat **Oswald** (ca în referință), 700. Text: Inter.
+- **Header:** nebuloasa generată în aceleași culori, mutată în dreapta; navigare sus (Workspace, About, Telescope); **inel punctat cu săgeată** în portocaliu, care se rotește lent și coboară la unealtă (oprit la „mișcare redusă”).
+- **Poziția prezisă** pe imagine e acum **cremă** (nu verde); culorile de date Difference (portocaliu / albastru) și apertura rămân.
+- **Grafice:** fundal `#0F2027`; paleta pe detectoare **rămâne cea veche** (conține două culori verzi), pentru că variantele fără verde **pică verificarea pentru daltoniști** (CVD ΔE 1,6 și 4,8).
+- **Secțiuni noi:** „About the project” și „The telescope” sub unealtă (cifre-cheie, cum vede SPHEREx culorile, tabel cu cele 6 detectoare, linkuri către IRSA și site-ul misiunii). Tot textul e în engleză, iar afirmațiile despre telescop vin din documentația IRSA și site-ul misiunii; ce nu am verificat (scopurile științifice, ghețurile) e formulat general.
+- Imaginile sunt **generate de noi** (`scratch/make_nebula.py`, fără pixeli de la nimeni). Poza dată de tine venea dintr-un clip stock Getty și nu se poate publica.
 
 ### 0.5 Paleta: trei opțiuni (am afișat mai sus o machetă mică pentru fiecare)
 
