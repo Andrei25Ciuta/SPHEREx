@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Oswald:wght@500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="css/styles.css?v=6">
+  <link rel="stylesheet" href="css/styles.css?v=7">
 </head>
 <body>
   <!-- Decorative animated starfield behind everything (pure CSS, aria-hidden) -->
@@ -220,17 +220,20 @@
       <h2 id="context-title">4. What is known here?</h2>
       <p class="muted">Other surveys at the same spot, with catalogued objects from SIMBAD.
         The dashed square is the field you are blinking.</p>
-      <div class="context-controls">
-        <label for="survey-select">Survey</label>
-        <select id="survey-select">
-          <option value="2mass">2MASS (near-IR, 1997–2001)</option>
-          <option value="allwise">AllWISE (mid-IR, 2010)</option>
-          <option value="dss2">DSS2 (optical, 1950s–90s)</option>
-        </select>
-        <button type="button" class="btn btn-small" id="aladin-btn">Show sky map</button>
+      <div class="skyframe" id="sky-frame">
+        <div class="context-controls">
+          <label for="survey-select">Survey</label>
+          <select id="survey-select">
+            <option value="2mass">2MASS (near-IR, 1997–2001)</option>
+            <option value="allwise">AllWISE (mid-IR, 2010)</option>
+            <option value="dss2">DSS2 (optical, 1950s–90s)</option>
+          </select>
+          <button type="button" class="btn btn-small" id="aladin-btn">Show sky map</button>
+          <button type="button" class="btn btn-small" id="sky-full-btn" hidden>Full screen</button>
+        </div>
+        <div id="aladin-box" class="skymap" hidden></div>
+        <p class="muted small" id="aladin-status" aria-live="polite"></p>
       </div>
-      <div id="aladin-box" class="skymap" hidden></div>
-      <p class="muted small" id="aladin-status" aria-live="polite"></p>
     </section>
   </main>
 

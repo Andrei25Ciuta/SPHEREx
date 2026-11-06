@@ -15,6 +15,7 @@ import { DATA_SOURCE } from "./config.js";
 import { BlinkPlayer, MODES, loadImage, meanImageData } from "./player.js";
 import { canvasToSky, measureAndPlot, clearMeasurement, APERTURE_RADIUS_PX } from "./features/measure.js";
 import { SkyContext } from "./features/skyContext.js";
+import { setupFullscreen } from "./features/fullscreen.js";
 import { savePng, recordBlink, canRecord, copyLink } from "./features/exporters.js";
 
 // Small helper: document.getElementById is long, so we alias it.
@@ -512,6 +513,7 @@ function clearMarker() {
 // Sky context (Aladin Lite)
 // ---------------------------------------------------------------
 const sky = new SkyContext($("aladin-box"), $("aladin-status"));
+setupFullscreen($("sky-frame"), $("sky-full-btn"));   // map + its controls fill the screen
 $("aladin-btn").addEventListener("click", async () => {
   const q = currentQuery || readForm();
   if (!q) { $("aladin-status").textContent = "Enter coordinates first."; return; }
@@ -519,6 +521,7 @@ $("aladin-btn").addEventListener("click", async () => {
   await sky.open(q, $("survey-select").value);
   $("aladin-btn").disabled = false;
   $("aladin-btn").textContent = "Re-centre sky map";
+  $("sky-full-btn").hidden = !sky.isOpen;             // nothing to enlarge until the map is open
 });
 $("survey-select").addEventListener("change", (e) => sky.setSurvey(e.target.value));
 

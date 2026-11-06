@@ -19,7 +19,7 @@ dates, flipped like a mini-video ("blinking"). Stars stay still; things that **m
 | **All detectors** | One averaged thumbnail per detector (D1–D6, 0.75–5 µm); click to blink it. |
 | **Measure** | Click a source → its **spectrum** (brightness vs wavelength, per survey pass) and **light curve** (brightness vs date, per detector), plus a table. |
 | **Flags** | Show flagged pixels in red; optionally skip frames with > 1 % flagged pixels. |
-| **Sky context** | Aladin Lite map of 2MASS / AllWISE / DSS2 with SIMBAD objects and the blink field outlined. Old surveys show where a fast mover *was* decades ago. |
+| **Sky context** | Aladin Lite map of 2MASS / AllWISE / DSS2 with SIMBAD objects and the blink field outlined. Old surveys show where a fast mover *was* decades ago. A **Full screen** button gives the map the whole screen (Esc leaves it). |
 | **Share** | Save the current image (PNG), record the blink as a video (WebM), copy a link that restores the exact view (`?ra=&dec=&fov=&det=&mode=`). |
 | **Test objects** | Barnard's Star, Epsilon Indi B, WISE 0855, RW Aurigae, R Draconis – SIMBAD positions propagated with proper motion to the SPHEREx era. |
 
@@ -29,18 +29,20 @@ respected (no auto-play), colour-blind-checked chart palette, table view of all 
 ## Run – frontend only (mock data, no install)
 
 ```bash
-py -m http.server 8765 -d frontend
+py scripts/serve_frontend.py
 ```
 
 Open http://localhost:8765 (or e.g. `/?ra=133.75976&dec=-7.24219&fov=5&det=D6&mode=diff`).
 ES modules don't load from `file://`, so always serve over http.
 
-> After editing JS/CSS, hard-reload with **Ctrl+F5** – the browser caches modules.
+> `scripts/serve_frontend.py` is `py -m http.server` plus a `Cache-Control: no-cache` header, so a normal reload picks up edited JS/CSS. With the plain `http.server` the browser may keep running old modules: use **Ctrl+F5**.
 
 The mock invents a star field per position with one moving source and one variable star
 (see `frontend/js/data/mockSource.js`). At a random position the mover is exaggerated
 (12 px/yr) so the effect is obvious; at a **test object** the mover *is* that object and
 moves with its **real** catalogue speed (WISE 0855: 1.3 px/yr). The header badge says **Mock data**.
+
+**Sky map (section 4 of the page):** its survey pictures (2MASS, AllWISE, DSS2) come from the first of these that answers: ESA's public mirror of the CDS surveys (`skies.esac.esa.int`, no setup), our backend's relay of IRSA's copies (when the backend runs), CDS (Strasbourg) directly. Some networks block CDS; then only the first two give a picture (the catalogue circles show either way). The text under the map says which source is in use; "Re-centre sky map" checks again. Set `SKY_TILES` in `frontend/js/config.js` to force one source.
 
 ## Run – with the backend (Python 3.14, FastAPI)
 
@@ -114,13 +116,14 @@ frontend/            static site, no build step (ES modules)
 backend/             FastAPI + astropy
   spherex/           query.py, cutout.py, stretch.py, photometry.py, cache.py, hips_proxy.py
   scripts/           inspect_fits.py, make_test_fits.py
+scripts/             serve_frontend.py (dev server for the frontend, no stale cache)
 docs/                DATA_CHECKLIST.md, SUBMISSION.md
 ```
 
 ## Credits & data
 
 - **SPHEREx** – NASA/JPL-Caltech; data from the NASA/IPAC Infrared Science Archive (IRSA).
-- **2MASS, AllWISE, DSS2** sky images – HiPS copies hosted by IRSA (originals: CDS Strasbourg).
+- **2MASS, AllWISE, DSS2** sky images – HiPS surveys made by CDS Strasbourg, served from ESA's public mirror (skies.esac.esa.int) or IRSA's copy (relayed by our backend); original data: UMass/IPAC-Caltech (2MASS), NASA/IPAC (AllWISE), STScI (DSS).
 - **SIMBAD** – CDS Strasbourg, queried through its Harvard mirror.
 - **Aladin Lite** v3 (CDS) and **Plotly.js** – loaded from the jsDelivr CDN on demand.
 - Test object coordinates: SIMBAD, with references in `frontend/js/targets.js`.

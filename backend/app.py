@@ -144,7 +144,16 @@ def value_error(_request, exc):
     return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
+class RevalidatedStatic(StaticFiles):
+    """Static files the browser must re-check on every load (no stale .js/.css while developing)."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 app.mount("/cutouts", StaticFiles(directory=cache.CACHE_DIR), name="cutouts")
 # Mounted LAST so /api/... and /cutouts/... win. Lets you open http://localhost:8001/ directly.
 if FRONTEND_DIR.exists():
-    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+    app.mount("/", RevalidatedStatic(directory=FRONTEND_DIR, html=True), name="frontend")

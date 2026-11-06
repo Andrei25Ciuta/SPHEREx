@@ -1,28 +1,58 @@
 // skyContext.js – Aladin Lite sky map: the same spot in other surveys + SIMBAD objects,
 // with the blink field drawn as a dashed square. Loaded from the CDN only on demand.
 //
-// Where the pictures come from:
-//   * with our backend (DATA_SOURCE = "api"): IRSA's copies of the surveys, relayed by
-//     /api/hips (IRSA sends no CORS headers, and WebGL needs them);
-//   * mock only: the CDS originals (Strasbourg) directly.
+// Where the pictures come from (see SKY_TILES in config.js), first one that answers wins:
+//   1. ESA's public mirror of the CDS surveys (skies.esac.esa.int, CORS open, no setup);
+//   2. our backend, which relays IRSA's copies via /api/hips
+//      (IRSA sends no CORS headers, and WebGL needs them);
+//   3. the CDS originals (Strasbourg) directly - blocked on some networks,
+//      in which case the map stays grey while the catalogue objects still show.
 // Catalogue objects: SIMBAD via its Harvard mirror (TAP), which sends CORS headers.
 // Older surveys are also handy for movers: a fast star sits somewhere ELSE in 2MASS (1999)!
 
-import { DATA_SOURCE, API_BASE } from "../config.js";
+import { SKY_TILES, API_BASE } from "../config.js";
 
 const ALADIN_URL = "https://cdn.jsdelivr.net/npm/aladin-lite@3.6.5/dist/aladin.js";
 const SIMBAD_TAP = "https://simbad.harvard.edu/simbad/sim-tap/sync";
 
+const ESA_HIPS = "https://skies.esac.esa.int";   // same surveys as CDS (properties file says so)
 const SURVEYS = {
-  "2mass":   { cds: "P/2MASS/color",   irsa: "CDS/2MASS/Color" },
-  "allwise": { cds: "P/allWISE/color", irsa: "CDS/AllWISE/RGB-W4-W2-W1" },
-  "dss2":    { cds: "P/DSS2/color",    irsa: "CDS/DSS2/color" },
+  "2mass":   { cds: "P/2MASS/color",   esa: "2MASSColor",   irsa: "CDS/2MASS/Color" },
+  "allwise": { cds: "P/allWISE/color", esa: "AllWISEColor", irsa: "CDS/AllWISE/RGB-W4-W2-W1" },
+  "dss2":    { cds: "P/DSS2/color",    esa: "DSSColor",     irsa: "CDS/DSS2/color" },
 };
-const viaBackend = DATA_SOURCE === "api";
+const SOURCES = ["esa", "backend", "cds"];
+const SOURCE_NOTE = {
+  esa: "Sky images: ESA's mirror of the CDS surveys.",
+  backend: "Sky images: IRSA (via our backend).",
+  cds: "Sky images: CDS. If the map stays grey, your network may block CDS: start the backend (see the README), then press “Re-centre sky map”.",
+};
+// Where the pictures come from right now; decided again each time the map is opened.
+let source = SOURCES.includes(SKY_TILES) ? SKY_TILES : "cds";
 /** Survey key -> what Aladin should load (a CDS id or a full HiPS URL). */
 function surveyRef(key) {
   const s = SURVEYS[key] || SURVEYS["2mass"];
-  return viaBackend ? `${API_BASE}/api/hips/${s.irsa}` : s.cds;
+  if (source === "esa") return `${ESA_HIPS}/${s.esa}`;
+  if (source === "backend") return `${API_BASE}/api/hips/${s.irsa}`;
+  return s.cds;
+}
+
+/** Does this URL answer quickly? (A blocked or slow host answers nothing.) */
+async function answers(url) {
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(2500) });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** First picture source that answers: ESA's mirror, then our backend (IRSA), then CDS. */
+async function pickSource() {
+  if (SKY_TILES !== "auto") return SOURCES.includes(SKY_TILES) ? SKY_TILES : "cds";
+  if (await answers(`${ESA_HIPS}/DSSColor/properties`)) return "esa";
+  if (await answers(`${API_BASE}/api/health`)) return "backend";
+  return "cds";
 }
 
 /** SIMBAD objects in a circle, as a VOTable URL (ADQL on the Harvard TAP mirror). */
@@ -80,6 +110,8 @@ export class SkyContext {
       this.container.hidden = true;
       return;
     }
+    const before = source;
+    source = await pickSource();
     if (!this.aladin) {
       this.aladin = this.A.aladin(this.container, {
         survey: surveyRef(this.survey),
@@ -87,13 +119,15 @@ export class SkyContext {
         showReticle: true,
         showCooGridControl: true,
         showProjectionControl: false,
-        showFullscreenControl: true,
+        showFullscreenControl: false,   // we have our own "Full screen" button (fullscreen.js)
         showLayersControl: true,
         showFrame: true,
+        log: false,            // Aladin's default usage ping to CDS: off (it fails on networks that block CDS)
       });
     }
-    this.statusEl.textContent = viaBackend ? "Sky images: IRSA (via our backend)." :
-      "Sky images: CDS. If the map stays grey, your network may block CDS – run the backend (IRSA copy).";
+    // The source can change between two openings (e.g. the backend was started meanwhile).
+    else if (before !== source) this.setSurvey(this.survey);
+    this.statusEl.textContent = SOURCE_NOTE[source];
     this.update(query);
   }
 
