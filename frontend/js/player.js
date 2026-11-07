@@ -46,6 +46,7 @@ export class BlinkPlayer {
     this.selectedCandidate = -1;
     this.compare = null;    // { a: [frame indices], b: [frame indices], op: "sub" | "add" } for the "compare" mode
     this.catalogue = [];    // catalogue objects: [{ label, pm, moving, points: [{ fx, fy }] }], one point per frame
+    this.asteroids = [];    // known asteroids per frame: [[{ name, fx, fy, vmag }] | null, ...] (features/skybot.js)
     this.lastTick = 0;
     this.rafId = null;
 
@@ -69,6 +70,7 @@ export class BlinkPlayer {
     this._derived = {};
     this.compare = null;                            // frame indices of the old frames: invalid now
     this.catalogue = [];                            // points are per frame of the old frames
+    this.asteroids = [];                            // so are these
     this.candidates = [];                           // they belong to the old frames
     this.selectedCandidate = -1;
     let done = 0;
@@ -115,6 +117,8 @@ export class BlinkPlayer {
   setCompare(compare) { this.compare = compare; this.draw(); }
   /** Catalogue objects at each frame's date (features/catalogue.js): small rings, names + paths for the moving ones. */
   setCatalogue(catalogue) { this.catalogue = catalogue || []; this.draw(); }
+  /** Known asteroids on every frame's date (features/skybot.js asteroidPoints): amber diamonds. */
+  setAsteroids(asteroids) { this.asteroids = asteroids || []; this.draw(); }
 
   /** Show frame i (wraps around, so goTo(-1) = last frame). */
   goTo(i) {
@@ -151,6 +155,7 @@ export class BlinkPlayer {
 
     if (this.showTracks && this.tracks.length) this._drawTracks();
     if (this.catalogue.length) this._drawCatalogue();
+    if (this.asteroids.length) this._drawAsteroids();
     if (this.candidates.length) this._drawCandidates();
     if (this.marker) this._drawMarker();
   }
@@ -417,6 +422,37 @@ export class BlinkPlayer {
         const tw = ctx.measureText(text).width;
         const lx = x + 10 + tw > W - 4 ? x - 10 - tw : x + 10;
         ctx.fillText(text, Math.max(4, lx), Math.min(H - 6, Math.max(14, y + 18)));
+      }
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Known asteroids and comets (SkyBoT): an amber diamond each, with its name and magnitude. One body is a
+   * DIFFERENT dot on every date (hundreds of arcsec per day), so in the animated modes only the bodies of the
+   * date on screen are drawn; in the others every date is drawn, which lays out the body's path as a row of diamonds.
+   */
+  _drawAsteroids() {
+    const { ctx, canvas } = this;
+    const W = canvas.width, H = canvas.height;
+    const dates = this.isAnimated ? [this.index] : this.asteroids.map((_, k) => k);
+    ctx.save();
+    ctx.shadowColor = "#000"; ctx.shadowBlur = 3;
+    ctx.strokeStyle = ctx.fillStyle = "#F2A93B";
+    ctx.lineWidth = 1.6;
+    ctx.font = "600 12px Inter, system-ui, sans-serif";
+    for (const k of dates) {
+      for (const a of this.asteroids[k] ?? []) {
+        const x = a.fx * W, y = a.fy * H;
+        if (x < -8 || x > W + 8 || y < -8 || y > H + 8) continue;
+        ctx.beginPath();
+        ctx.moveTo(x, y - 8); ctx.lineTo(x + 8, y); ctx.lineTo(x, y + 8); ctx.lineTo(x - 8, y); ctx.closePath();
+        ctx.stroke();
+        if (this.isAnimated) {
+          const text = `${a.name}${a.vmag !== null ? ` · V ${a.vmag}` : ""}`;
+          const tw = ctx.measureText(text).width;
+          ctx.fillText(text, x + 12 + tw > W - 4 ? Math.max(4, x - 12 - tw) : x + 12, Math.min(H - 6, Math.max(14, y - 10)));
+        }
       }
     }
     ctx.restore();

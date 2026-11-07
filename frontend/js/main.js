@@ -16,9 +16,15 @@ import { BlinkPlayer, MODES, loadImage, meanImageData } from "./player.js";
 import { canvasToSky, measureAndPlot, clearMeasurement, APERTURE_RADIUS_PX } from "./features/measure.js";
 import { SkyContext } from "./features/skyContext.js";
 import { setupFullscreen } from "./features/fullscreen.js";
-import { findMoversInImages, describeMover, matchKnownObject, moverPositionAtMjd, passIndices } from "./features/movers.js";
+import { findMoversInImages, detectSources, describeMover, matchKnownObject, moverPositionAtMjd, passIndices } from "./features/movers.js";
+import { colourHint } from "./features/spectrum.js";
+import { findDistantMovers, describeDistant, classifyApparentMotion } from "./features/parallax.js";
+import { candidatesToCsv, candidatesToJson, exportFileName } from "./features/export.js";
+import { startTour, WORKSPACE_STEPS } from "./features/tour.js";
+import { PLANET_X_DEMO } from "./data/mockSource.js";
 import { compareChoices, membersFor, defaultChoice, shortLabel, OPERATIONS } from "./features/compare.js";
 import { fetchCatalogue, catalogueTracks } from "./features/catalogue.js";
+import { fetchSkybotForFrames, asteroidPoints, matchAsteroids } from "./features/skybot.js";
 import { savePng, recordBlink, canRecord, copyLink } from "./features/exporters.js";
 
 // Small helper: document.getElementById is long, so we alias it.
@@ -301,6 +307,7 @@ function setPlayerEnabled(enabled) {
     .forEach((r) => { r.disabled = !enabled || player.length < 2; });
   $("show-flags").disabled = !enabled || !player.hasFlagMasks;
   $("find-movers-btn").disabled = !enabled || !canFindMovers();
+  $("find-distant-btn").disabled = !enabled || !canFindMovers();
 }
 
 playBtn.addEventListener("click", () => player.toggle());
@@ -315,7 +322,7 @@ frameSlider.addEventListener("input", () => {
 // Ignored while typing in a field / using a select or slider (they need these keys).
 // On a focused button, Space already "clicks" it, so we only take over the arrows there.
 document.addEventListener("keydown", (e) => {
-  if (e.target.closest("input, select, textarea, summary, .skymap") || !player.length) return;
+  if (!(e.target instanceof Element) || e.target.closest("input, select, textarea, summary, .skymap") || !player.length) return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;    // leave browser shortcuts alone
   if (e.key === "Escape" && player.marker) { clearMarker(); return; }
   if (!player.isAnimated) return;
@@ -489,6 +496,7 @@ async function showDetector(detector) {
   setPlayerEnabled(true);
   updateTracks();
   updateCatalogue();                     // SIMBAD objects at these images' dates, if the box is ticked
+  updateAsteroids();                     // known asteroids at these images' dates, if the box is ticked
   // Re-apply the mode: it may need ≥ 2 frames, and the info line depends on it.
   setMode(player.mode, { updateUrl: false });
   $("movers-status").textContent = moversHint();
@@ -548,6 +556,7 @@ const measureEls = {
   pos: $("measure-pos"), charts: $("charts"), note: $("measure-note"),
   tableWrap: $("measure-table-wrap"), table: $("measure-table"),
   spectrum: $("spectrum-chart"), lightcurve: $("lightcurve-chart"),
+  spectrumCaption: $("spectrum-caption"), lightcurveCaption: $("lightcurve-caption"),
 };
 let measureToken = 0;
 
@@ -655,6 +664,64 @@ async function updateCatalogue() {
 $("show-catalogue").addEventListener("change", updateCatalogue);
 
 // ---------------------------------------------------------------
+// Known asteroids (SkyBoT): a body crosses a 5′ field in about half a day, so it is a different dot in every
+// image. They are looked up at the exact date of each image (features/skybot.js). Real data only.
+// ---------------------------------------------------------------
+const skybotCache = new Map();             // answers by field and date (successful ones only)
+let asteroidState = null;                  // { key, perFrame, failures, firstError } for the frames on screen
+let asteroidError = "";
+const asteroidKey = () => `${catalogueKey()}|${currentDetector}|${currentFrames.length}`;
+
+/** SkyBoT answers for the images on screen, or null (synthetic data, offline, blocked). Never throws. */
+async function ensureAsteroids(onProgress = () => {}) {
+  if (DATA_SOURCE !== "api" || !currentQuery || !currentFrames.length) return null;
+  const key = asteroidKey();
+  if (asteroidState?.key === key) return asteroidState;
+  const token = loadToken;
+  try {
+    const res = await fetchSkybotForFrames(currentFrames,
+      { ra: currentQuery.ra, dec: currentQuery.dec, fovArcmin: currentQuery.fov },
+      { cache: skybotCache, onProgress, shouldStop: () => token !== loadToken });
+    if (token !== loadToken || !currentQuery || key !== asteroidKey()) return null;        // another field was loaded meanwhile
+    asteroidError = "";
+    asteroidState = { key, ...res };
+    return asteroidState;
+  } catch (err) {
+    console.warn(err);
+    asteroidError = err.message;
+    return null;
+  }
+}
+
+/** Draw (or clear) the asteroid overlay for the images on screen. */
+async function updateAsteroids() {
+  const box = $("show-asteroids"), info = $("asteroid-info");
+  if (!box.checked || !currentQuery || !currentFrames.length || !player.naturalSize) {
+    player.setAsteroids([]);
+    if (!box.checked) info.textContent = "";
+    return;
+  }
+  const token = loadToken;
+  info.textContent = "Asking SkyBoT for each image date…";
+  const state = await ensureAsteroids((done, total) => { if (box.checked && token === loadToken) info.textContent = `Asking SkyBoT… ${done} of ${total} dates`; });
+  if (token !== loadToken || !box.checked) return;
+  if (!state) {
+    player.setAsteroids([]);
+    info.textContent = `Could not get the known asteroids${asteroidError ? ` (${asteroidError})` : ""}.`;
+    return;
+  }
+  const points = asteroidPoints(state.perFrame, currentGeo());
+  player.setAsteroids(points);
+  const names = new Set(points.flatMap((list) => (list ?? []).map((a) => a.name)));
+  const note = state.failures ? ` ${state.failures} date${state.failures === 1 ? "" : "s"} could not be checked.` : "";
+  info.textContent = names.size
+    ? `SkyBoT: ${names.size} known asteroid${names.size === 1 ? "" : "s"} or comet${names.size === 1 ? "" : "s"} cross${names.size === 1 ? "es" : ""} this field on these dates (amber diamonds). ` +
+      `A body moves hundreds of arcsec per day, so it is a different dot in every image.${note}`
+    : `SkyBoT lists no known asteroid or comet inside this field on any of these dates.${note}`;
+}
+$("show-asteroids").addEventListener("change", updateAsteroids);
+
+// ---------------------------------------------------------------
 // Find movers: which dots changed position between the dates? (features/movers.js)
 // ---------------------------------------------------------------
 const MOVERS_HINT = "Compares the dots in all images and lists the ones that moved.";
@@ -683,8 +750,32 @@ function clearMovers() {
   player.setCandidates([]);
   $("mover-list").hidden = true;
   $("mover-list").replaceChildren();
+  $("mover-export").hidden = true;
   $("mover-detail").hidden = true;
   $("movers-status").textContent = MOVERS_HINT;
+}
+
+/**
+ * The pixels the detector works on. Real data: the backend also serves every cutout as float32
+ * (`dataUrl`), with no 8-bit clipping and finer positions. Otherwise the 8-bit pictures of the player.
+ */
+async function detectionPixels() {
+  const n = player.naturalSize;
+  if (player.frames.length && player.frames.every((f) => f.dataUrl)) {
+    try {
+      const arrays = await Promise.all(player.frames.map(async (f) => {
+        const response = await fetch(f.dataUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const values = new Float32Array(await response.arrayBuffer());
+        if (values.length !== n * n) throw new Error("unexpected size");
+        return values;
+      }));
+      return { arrays, isFloat: true };
+    } catch (err) {
+      console.warn("Float pixels unavailable, using the 8-bit pictures:", err);
+    }
+  }
+  return { arrays: player.greyFrames(), isFloat: false };
 }
 
 $("find-movers-btn").addEventListener("click", async () => {
@@ -697,15 +788,17 @@ $("find-movers-btn").addEventListener("click", async () => {
   await new Promise((resolve) => setTimeout(resolve, 30));      // let the browser show that message first
   if (token !== loadToken) return;                               // new data arrived meanwhile
   try {
-    const greys = player.greyFrames();
-    if (!greys) {
+    const { arrays, isFloat } = await detectionPixels();
+    if (!arrays) {
       status.textContent = "Cannot read the image pixels in this browser (images from another site), so the search cannot run.";
       return;
     }
-    const result = findMoversInImages(player.frames.map((f, i) => ({ mjd: f.mjd, grey: greys[i] })), player.naturalSize);
+    if (token !== loadToken) return;
+    const result = findMoversInImages(player.frames.map((f, i) => ({ mjd: f.mjd, grey: arrays[i] })), player.naturalSize,
+      isFloat ? { sigmaFloor: 1e-9 } : {});
     // Known objects: the test list always, and real SIMBAD objects too when we have real data.
-    if (DATA_SOURCE === "api") status.textContent = "Checking SIMBAD for known objects…";
-    const objects = await ensureCatalogue();
+    if (DATA_SOURCE === "api") status.textContent = "Checking SIMBAD and SkyBoT for known objects…";
+    const [objects] = await Promise.all([ensureCatalogue(), ensureAsteroids()]);        // each answers null if it cannot: never blocks
     if (token !== loadToken) return;
     showMovers(result, objects);
   } catch (err) {
@@ -713,31 +806,84 @@ $("find-movers-btn").addEventListener("click", async () => {
     status.textContent = `The search failed: ${err.message}`;
   } finally {
     $("find-movers-btn").disabled = !canFindMovers();
+    $("find-distant-btn").disabled = !canFindMovers();
   }
 });
 
-function showMovers({ candidates, stats, reason }, catalogueObjects = null) {
+/** The cutout the pixels belong to: centre, size and pixel scale. */
+const currentGeo = () => {
+  const n = player.naturalSize;
+  return { ra: currentQuery.ra, dec: currentQuery.dec, n, scaleArcsec: currentFrames[0].pixelScaleArcsec ?? (currentQuery.fov * 60) / n };
+};
+
+// Planet X mode: a body of the outer Solar System swings with the Earth's parallax, so its path is a loop-like
+// curve that "Find movers" (straight lines) cannot link. This tries every distance at once (features/parallax.js).
+$("find-distant-btn").addEventListener("click", async () => {
+  if (!player.length || !currentQuery) return;
+  const token = loadToken;
+  const status = $("movers-status");
+  $("find-movers-btn").disabled = true;
+  $("find-distant-btn").disabled = true;
+  clearMovers();
+  status.textContent = `Searching for a distant body… testing which dots follow Earth's parallax in ${player.length} images.`;
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  if (token !== loadToken) return;
+  try {
+    const { arrays, isFloat } = await detectionPixels();
+    if (!arrays) {
+      status.textContent = "Cannot read the image pixels in this browser (images from another site), so the search cannot run.";
+      return;
+    }
+    if (token !== loadToken) return;
+    const n = player.naturalSize;
+    const detected = player.frames.map((f, i) => ({ mjd: f.mjd, sources: detectSources(arrays[i], n, isFloat ? { sigmaFloor: 1e-9 } : {}) }));
+    await ensureAsteroids();                                                              // (a swinging body could also be a known one)
+    if (token !== loadToken) return;
+    showMovers(findDistantMovers(detected, currentGeo()), null, { distant: true });
+  } catch (err) {
+    console.error(err);
+    status.textContent = `The search failed: ${err.message}`;
+  } finally {
+    $("find-movers-btn").disabled = !canFindMovers();
+    $("find-distant-btn").disabled = !canFindMovers();
+  }
+});
+
+function showMovers({ candidates, stats, reason }, catalogueObjects = null, { distant = false } = {}) {
   moversCatalogueChecked = Boolean(catalogueObjects);
   const status = $("movers-status"), list = $("mover-list");
   if (reason) { status.textContent = `Cannot search: ${reason}.`; return; }
 
   const n = player.naturalSize;
-  const geo = { ra: currentQuery.ra, dec: currentQuery.dec, n,
-    scaleArcsec: currentFrames[0].pixelScaleArcsec ?? (currentQuery.fov * 60) / n };
+  const geo = currentGeo();
   const pool = catalogueObjects ? [...TARGETS, ...catalogueObjects] : TARGETS;     // test objects first: their motions are the best
   movers = candidates.map((c, k) => ({
     ...c, ...describeMover(c, geo),
     label: `#${k + 1}`,
-    known: matchKnownObject(c, geo, pool)?.target.label ?? null,
+    known: distant ? null : matchKnownObject(c, geo, pool)?.target.label ?? null,
+    distant: distant ? describeDistant(c, geo) : null,
     // where it is on each frame's date, as image fractions (what the player draws)
-    points: player.frames.map((f) => { const p = moverPositionAtMjd(c, f.mjd); return { fx: p.x / n, fy: p.y / n }; }),
+    // (the search works on image-registered positions: add each image's own shift back to hit its pixel)
+    points: player.frames.map((f, k) => {
+      const p = moverPositionAtMjd(c, f.mjd), s = c.shifts?.[k];
+      return { fx: (p.x + (s?.dx ?? 0)) / n, fy: (p.y + (s?.dy ?? 0)) / n };
+    }),
   }));
+  // Known asteroids (SkyBoT) on the image dates, when they were asked for: is a candidate sitting on one?
+  if (asteroidState?.key === asteroidKey()) {
+    const pts = asteroidPoints(asteroidState.perFrame, geo);
+    for (const m of movers) m.asteroids = matchAsteroids(m.points, pts, geo);
+  }
 
   const dots = Math.round(stats.dotsPerFrame.reduce((a, b) => a + b, 0) / stats.frames);
-  const summary = `Compared ${stats.frames} images (about ${dots} dots each; ${stats.stillDots} stayed put).`;
+  const summary = distant
+    ? `Compared ${stats.frames} images (about ${dots} dots each; ${Math.round(stats.movingDots / stats.frames)} per image are not fixed stars).`
+    : `Compared ${stats.frames} images (about ${dots} dots each; ${stats.stillDots} stayed put).`;
+  const other = detSelect.options.length > 1 ? " Try another detector: a dot can be too faint in one wavelength band." : "";
   if (!movers.length) {
-    const other = detSelect.options.length > 1 ? " Try another detector: a dot can be too faint in one wavelength band." : "";
-    status.textContent = `No movers found. ${summary} Nothing shifted by more than about 1 pixel (${geo.scaleArcsec.toFixed(0)}″).${other}`;
+    status.textContent = distant
+      ? `No distant body found. ${summary} A body 500 AU away swings about 800″ (130 pixels) between survey passes, so the field must be wide (30′), and the search only accepts bodies bound to the Sun.${other}`
+      : `No movers found. ${summary} Nothing shifted by more than about 1 pixel (${geo.scaleArcsec.toFixed(0)}″).${other}`;
     return;
   }
   status.textContent = `${movers.length} candidate${movers.length === 1 ? "" : "s"} found, best first. ${summary} Click one to see its path.`;
@@ -751,17 +897,47 @@ function showMovers({ candidates, stats, reason }, catalogueObjects = null) {
     btn.dataset.index = String(k);
     const rank = Object.assign(document.createElement("span"), { className: "mover-rank", textContent: m.label });
     const main = Object.assign(document.createElement("span"), { className: "mover-main",
-      textContent: `${m.speedArcsecPerYear.toFixed(1)}″/yr toward ${m.compass}${m.known ? ` · ${m.known} (known)` : ""}` });
+      textContent: m.distant
+        ? `about ${Math.round(m.distanceAU)} AU away (${m.distant.rangeText}) · own drift ${m.speedArcsecPerYear.toFixed(0)}″/yr toward ${m.compass}`
+        : `${m.speedArcsecPerYear.toFixed(1)}″/yr toward ${m.compass}${m.known ? ` · ${m.known} (known)` : ""}` });
     const sub = Object.assign(document.createElement("span"), { className: "mover-sub",
-      textContent: `RA ${formatRA(m.ra)}  Dec ${formatDec(m.dec)} · seen in ${m.nDet} of ${m.nFrames} images · ${Math.round(m.significance)}σ` });
+      textContent: `RA ${formatRA(m.ra)}  Dec ${formatDec(m.dec)} · seen in ${m.nDet} of ${m.nFrames} images · ${m.significance > 100 ? ">100" : Math.round(m.significance)}σ` });
     btn.append(rank, main, sub);
     btn.addEventListener("click", () => selectMover(selectedMover === k ? -1 : k));
     li.append(btn);
     return li;
   }));
   list.hidden = false;
+  $("mover-export").hidden = false;
   player.setCandidates(movers, -1);
 }
+
+// Save the candidates as CSV / JSON. Every file says what the data is and links back to this view.
+function downloadText(text, name, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: name });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function exportContext() {
+  const link = new URL(location.href);
+  link.searchParams.delete("data");                // a link must not carry the address of a backend on this computer
+  link.searchParams.delete("api");
+  link.hash = "";
+  return { isReal: DATA_SOURCE === "api", detector: currentDetector, query: currentQuery, permalink: link.href };
+}
+$("export-csv-btn").addEventListener("click", () => {
+  if (!movers.length || !currentQuery) return;
+  const ctx = exportContext();
+  downloadText("﻿" + candidatesToCsv(movers, ctx), exportFileName(ctx, "csv"), "text/csv;charset=utf-8");   // BOM: Excel reads UTF-8
+});
+$("export-json-btn").addEventListener("click", () => {
+  if (!movers.length || !currentQuery) return;
+  const ctx = exportContext();
+  downloadText(candidatesToJson(movers, ctx), exportFileName(ctx, "json"), "application/json");
+});
 
 /** Highlight one candidate on the image (ring + path) and describe it; -1 = none. */
 function selectMover(k) {
@@ -771,22 +947,88 @@ function selectMover(k) {
   player.setCandidates(movers, k);
   const detail = $("mover-detail");
   detail.hidden = k < 0;
+  $("mover-colour").hidden = true;                  // belongs to the candidate that was selected before
   if (k < 0) return;
   const m = movers[k];
+  $("mover-spectrum-btn").hidden = Boolean(m.distant);          // the measurement follows a straight path: not for a swinging body
+  if (m.distant) {
+    $("mover-detail-text").textContent =
+      `${m.label}: ${m.distant.text} Its apparent path (drawn on the image) is the Earth's parallax swing plus that drift; ` +
+      `${m.parallaxSigma > 100 ? "over 100" : m.parallaxSigma.toFixed(0)}σ better than any straight line, seen in ${m.nDet} of ${m.nFrames} images. ` +
+      `Middle of the observations: RA ${formatRA(m.ra)}, Dec ${formatDec(m.dec)}. ` +
+      (DATA_SOURCE === "api" ? "" : "This is the simulated body of the demo (synthetic data), not a discovery. ") +
+      (asteroidSentence(m) ? asteroidSentence(m).trimStart() + " " : "") +
+      "Approximations: the Earth's position comes from a simple formula, the body's own motion is taken as a straight line, and it is assumed to be bound to the Sun.";
+    return;
+  }
   $("mover-detail-text").textContent =
     `${m.label}: ${m.speedArcsecPerYear.toFixed(1)}″/yr (${m.speedPx.toFixed(2)} px/yr) toward ${m.compass}, ` +
     `position angle ${m.positionAngleDeg.toFixed(0)}°. Middle of the observations: RA ${formatRA(m.ra)}, Dec ${formatDec(m.dec)}. ` +
     (m.known ? `This is ${m.known}, a known object: the search found it on its own. `
       : moversCatalogueChecked
         ? "No SIMBAD object or test object sits within 18″ of it (catalogue positions moved to this date). It may be an asteroid, a faint star SIMBAD lacks, or something new: check the sky map and the other detectors. "
-        : "Not one of the five test objects (SIMBAD was not consulted: synthetic data, or it did not answer). Catalogues list year-2000 positions, so a fast mover can sit a little away from where it is catalogued. ");
+        : "Not one of the five test objects (SIMBAD was not consulted: synthetic data, or it did not answer). Catalogues list year-2000 positions, so a fast mover can sit a little away from where it is catalogued. ") +
+    (m.known ? "" : classifyApparentMotion(m.speedArcsecPerYear) + asteroidSentence(m));
 }
+
+/** What the SkyBoT check says about a candidate (empty when it was not run). */
+function asteroidSentence(m) {
+  if (!m.asteroids) return "";
+  if (!m.asteroids.length) return " SkyBoT: no known asteroid or comet within 20″ of it on any date (it lists known bodies only: that does not make this one new).";
+  const a = m.asteroids[0];
+  return ` SkyBoT: ${a.name}${a.vmag !== null ? ` (V ${a.vmag})` : ""}, a known ${a.cls ? a.cls : "Solar System body"}, lies within 20″ of it on ${a.hits} of ${m.nFrames} dates (closest ${a.nearestArcsec.toFixed(0)}″): ` +
+    (a.hits >= 2 ? "very likely this object." : "a single date can be chance: look at the other dates.");
+}
+
+// The simulated Planet X: a field that contains the body of js/data/mockSource.js (synthetic data only).
+$("planetx-block").hidden = DATA_SOURCE === "api";
+$("planetx-demo-btn").addEventListener("click", () => {
+  raInput.value = PLANET_X_DEMO.ra.toFixed(5);
+  decInput.value = PLANET_X_DEMO.dec.toFixed(5);
+  fovInput.value = "30";
+  $("fov-value").textContent = "30";
+  updatePreview("ra");
+  updatePreview("dec");
+  document.querySelectorAll("#quick-pick-list .chip").forEach((c) => c.setAttribute("aria-pressed", "false"));
+  requestedDetector = "D5";                           // the simulated body is bright at long wavelengths
+  form.requestSubmit();
+});
 
 $("mover-map-btn").addEventListener("click", async () => {
   const m = movers[selectedMover];
   if (!m || !currentQuery) return;
   await openSkyMap({ ra: m.ra, dec: m.dec, fov: currentQuery.fov });
   $("sky-frame").scrollIntoView({ block: "center", behavior: prefersReducedMotion ? "auto" : "smooth" });
+});
+
+// "Spectrum along its path": measure the candidate where it is on every image's date, plot it,
+// and say in words what its colour suggests (features/spectrum.js).
+$("mover-spectrum-btn").addEventListener("click", async () => {
+  const m = movers[selectedMover];
+  if (!m || !currentQuery) return;
+  const btn = $("mover-spectrum-btn"), colour = $("mover-colour");
+  btn.disabled = true;
+  colour.hidden = false;
+  colour.textContent = "Measuring the candidate in every image…";
+  player.setMarker(null);
+  const token = ++measureToken;
+  try {
+    const points = await measureAndPlot({
+      query: currentQuery, els: measureEls, isCurrent: () => token === measureToken,
+      sky: { ra: m.ra, dec: m.dec, eastArcsec: 0, northArcsec: 0 },
+      motion: { epochMjd: m.mjdRef, pmEast: m.pmEastArcsecPerYear, pmNorth: m.pmNorthArcsecPerYear },
+      title: m.label,
+    });
+    if (token !== measureToken) return;
+    colour.textContent = colourHint(points ?? []).text +
+      (DATA_SOURCE === "api" ? "" : " (Synthetic demo data: this colour comes from the simulation, not from the sky.)");
+    $("measure-title").scrollIntoView({ block: "start", behavior: prefersReducedMotion ? "auto" : "smooth" });
+  } catch (err) {
+    console.error(err);
+    if (token === measureToken) colour.textContent = `Could not measure the candidate: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 // ---------------------------------------------------------------
@@ -816,6 +1058,13 @@ $("record-btn").addEventListener("click", async () => {
     btn.textContent = "Record video";
     btn.disabled = false;
   }
+});
+
+// Guided tour: points at the parts of the page, changes nothing, needs no data or network.
+let activeTour = null;
+$("tour-btn").addEventListener("click", () => {
+  activeTour?.close();
+  activeTour = startTour(WORKSPACE_STEPS, { onClose: () => { activeTour = null; } });
 });
 
 // Embed: the same view inside an <iframe> on another page (?embed=1 hides the banner and the info sections).
@@ -954,6 +1203,10 @@ $("show-catalogue").disabled = DATA_SOURCE !== "api";
 $("show-catalogue").closest("label").title = DATA_SOURCE === "api"
   ? "Catalogue objects around the field, moved to the date of each image"
   : "Only with real data: the synthetic demo sky is invented, SIMBAD's stars would not match it.";
+$("show-asteroids").disabled = DATA_SOURCE !== "api";
+$("show-asteroids").closest("label").title = DATA_SOURCE === "api"
+  ? "Known asteroids and comets (SkyBoT, IMCCE) at the date of each image: a body moves hundreds of arcsec per day"
+  : "Only with real data: the synthetic demo sky is invented, real asteroids would not match it.";
 
 if (!canRecord()) $("record-btn").title = "Your browser cannot record canvas video.";
 renderQuickPicks();

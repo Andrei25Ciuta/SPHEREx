@@ -53,6 +53,8 @@ de start [parțial confirmat: nu am găsit textul exact, nu știu cum se aplică
 
 ### 2.2 Date reale (ultimul pas, dar cel mai important pentru „Validity”)
 
+> **Actualizare 7 nov (seara, după „toate cele 5 idei"):** date reale folosite (32 de cutout-uri: Barnard D2 + D6, Epsilon Indi B D2; 145 MB în `backend/data/real/`, ignorat de git). **Find movers orb: 3 din 3 regăsiți, 0 candidați falși** (Barnard D6 la 0,55 ″/an de catalog, Epsilon Indi B la 0,61; **Barnard D2 la 3,72 ″/an, cauză necunoscută**, ipoteză: nucleu saturat). Detalii și limite: [VALIDATION.md](VALIDATION.md). Adăugat în aplicație: pixeli float + registrare, reeșantionare bilineară, fotometrie în Jy, spectru pe traiectoria unui mover cu indiciu de culoare, **mod Planet X (paralaxă; doar pe date sintetice)**, asteroizi cunoscuți (SkyBoT, fără proxy), export CSV/JSON, tur ghidat, GIF etichetat sintetic, [PITCH.md](PITCH.md). **Nefăcut / nevalidat:** modul Planet X pe date reale; vreun asteroid luminos văzut unde e prezis (test pozitiv); indiciul de culoare pe un obiect real (pentru Epsilon Indi B lipsesc imaginile D6, ~25 MB, descărcare nefăcută); steagurile ca mască în centroid; licența datelor reale (de aceea nu sunt în repo).
+
 > **Actualizare 7 nov:** scriptul `backend/scripts/fetch_real_sample.py` + ghidul [REAL_DATA_TEST.md](REAL_DATA_TEST.md) sunt gata (86 de teste offline). **Pasul A (doar căutare, fără descărcare) rulat: merge, iar toate cele 5 obiecte au date reale** (tabel în [IRSA_FACTS.md](IRSA_FACTS.md) §8b). **Următorul pas, la utilizator (8 nov dimineața):** `--target barnard --download 1`, apoi lipit raportul în chat. După el: adaptat `query.py`, sursa de date IRSA în backend, Find movers pe date reale.
 
 > **Actualizare 6 nov:** documentația IRSA e publică; vezi [IRSA_FACTS.md](IRSA_FACTS.md). **Metoda de acces e cunoscută** (TAP + cutout server-side, colecții `spherex_qr2` / `spherex_qr3`). Punctele de mai jos rămân ca listă de lucru, dar **„găsește metoda de acces” și „definiția biților de flag” sunt rezolvate în documentație**; rămân de făcut implementarea și validarea pe date reale. Primul pas concret (permis ca pregătire): **rulezi tu o interogare TAP** din documentație pentru WISE 0855 și ne spui câte imagini sunt pe detector.
@@ -72,16 +74,17 @@ de start [parțial confirmat: nu am găsit textul exact, nu știu cum se aplică
 - [ ] **P2** Păstrarea fluxului la reeșantionare (acum cel mai apropiat vecin): decide dacă fotometria se face pe pixelii originali.
 
 ### 2.3 Funcții noi (ordonate după impact / efort)
-- [ ] **P2** **Demo ghidat „Try the demo”** (~2–3 h): încarcă WISE 0855, explică mișcarea proprie, pornește blink, trece la Difference, arată traiectoria prezisă.
+- [x] **P2** **Tur ghidat** (făcut 2026-11-07, `frontend/js/features/tour.js`, butonul „Take the 1-minute tour", 8 pași): funcționează offline și **nu încarcă date singur** (arată doar părțile paginii). Varianta „Try the demo" care încarcă WISE 0855 și rulează blink-ul singură nu e făcută.
 - [ ] **P2** **Secțiunea „About / Explain it to me”** (~2–3 h): ce e SPHEREx, de ce funcționează blink-ul, mover vs variabilă vs artefact, de ce un mover nu e automat Planet X.
 - [x] **P2** **„Find Movers”** (v1 făcut 2026-11-07, `frontend/js/features/movers.js`, teste `scratch/test_movers.mjs`): puncte în poziții diferite între treceri → traiectorie → viteză (″/an) și direcție → listă clasată → click = traseul pe blink + „Check in sky map". Geometrie, fără rețele neuronale. **Rămas / limite:** (a) doar poziții, nu luminozitate (filtrul variabil schimbă luminozitatea între imagini); (b) are nevoie de ≥ 3 treceri; (c) mișcare < ~1 px peste perioadă = ca o stea fixă; (d) nu e testat pe date reale; (e) **mișcări mari** (paralaxa unui obiect îndepărtat dă sute de secunde de arc între două treceri la 6 luni – estimarea mea, neverificată) sunt la limita setării `maxSpeedPxPerYear = 60`; (f) potrivirea cu obiecte cunoscute folosește doar cele 5 obiecte de test, nu un catalog.
 - [ ] **P2** **Potrivire cu SIMBAD**: „cunoscut” / „posibil cunoscut” / „necunoscut”; un candidat necunoscut nu e automat o planetă nouă.
 - [ ] **P3** Scor de încredere pentru candidați (~3–5 h).
-- [ ] **P3** Estimator de clasă spectrală din raportul flux 4–5 µm vs lungimi de undă mici (~2 h; semnalează pitici brune reci).
-- [ ] **P3** Export candidați CSV / VOTable (~1–3 h).
+- [x] **P3** Estimator de clasă spectrală din raportul flux 4–5 µm vs 1–2 µm (făcut 2026-11-07, `features/spectrum.js`, „Spectrum along its path"): indiciu, nu clasificare; **netestat pe un obiect real** (lipsesc imaginile 4–5 µm ale unui obiect fără saturare).
+- [x] **P3** Export candidați CSV / JSON (făcut 2026-11-07, `features/export.js`; fiecare rând spune dacă datele sunt reale sau sintetice și are permalink). VOTable: nefăcut.
 - [ ] **P3** Web Worker pentru Difference/Stack (~1,5 h), dacă apar sacadări.
 - [ ] **P3** Comparație multi-epocă cu WISE/NEOWISE pentru o bază de timp mai lungă (necesită date reale; ~5–8 h).
-- [ ] **P3** Estimarea paralaxei (~8–12 h, date reale).
+- [x] **P3** Estimarea paralaxei / distanței (făcut 2026-11-07, `features/parallax.js`, butonul „Look for a distant body"): corp al sistemului solar îndepărtat, căutat ca triplete de puncte din 3 treceri; **validat doar pe date sintetice** (demo „Planet X (simulated)" la 600 AU). Nu a rulat pe date reale; nu pretindem nicio planetă.
+- [x] **P2** Asteroizi cunoscuți (făcut 2026-11-07, `features/skybot.js`): SkyBoT răspunde direct browserului (CORS deschis), căutat la data fiecărei imagini. **Test pozitiv nefăcut** (asteroizii din cutout-urile noastre erau prea slabi).
 
 ---
 
@@ -103,7 +106,7 @@ de start [parțial confirmat: nu am găsit textul exact, nu știu cum se aplică
 ## 4. Documentație
 
 - [x] **P1** `LICENSE` (MIT, pus 2026-11-07, „Copyright (c) 2026 mateibut" – schimbă cu numele tău dacă vrei). **Încă de verificat:** cerința de licență pentru 2026 e **[neconfirmată]**; Aladin Lite e GPL-3 și e încărcat la rulare (vezi `CREDITS.md`) – întreabă/verifică dacă afectează licența aleasă.
-- [ ] **P1** **README**: captură + **GIF animat** cu WISE 0855 în Blink și Difference; ce face, cum rulezi (mock și backend), limitări, proveniența datelor (real vs mock) – la început, nu la sfârșit.
+- [x] **P1** **README**: **GIF animat** cu WISE 0855 în Blink și Difference (făcut 2026-11-07, `scripts/make_demo_gif.py` → `docs/img/demo.gif`, **etichetat „SYNTHETIC DATA - NOT SPHEREx"** pe fiecare cadru); ce face, cum rulezi, limitări, proveniența datelor. Rămâne o captură de ecran a aplicației (nu am putut face una de calitate cu panoul de previzualizare îngust).
 - [x] **P1** **`CREDITS.md` / „Sources”** (primă versiune 2026-11-07; verifică formulările exacte de mulțumire pe paginile arhivelor înainte de predare) [termenii cer citarea tuturor surselor, chiar open-source]:
   - date: SPHEREx / NASA IPAC IRSA, 2MASS, AllWISE, DSS2 (copii HiPS IRSA, originale CDS), SIMBAD (mirror Harvard);
   - coordonatele obiectelor test: referințele din `frontend/js/targets.js` (Gaia DR3 / `2020yCat.1350`, Kirkpatrick+2021 `2021ApJS..253....7K`, Vallenari+ `2007A&A...474..653V`);

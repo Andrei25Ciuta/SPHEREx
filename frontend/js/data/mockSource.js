@@ -39,6 +39,16 @@ const FAKE_LATENCY_MS = 500;      // pretend we are waiting for a server
 
 import { targetsInField, positionAtEpoch } from "../targets.js";
 import { skyToCanvas, mjdToYear } from "../geometry.js";
+import { parallaxOffsetArcsec } from "../features/parallax.js";
+
+/**
+ * SIMULATED, not a real object and not a prediction: a body 600 AU away, put in the mock sky so that the
+ * parallax search (features/parallax.js) has something to find. Its apparent path is Earth's parallax swing
+ * plus a slow drift of its own (65"/yr = 0.8 km/s at that distance, below the 1.7 km/s escape speed).
+ * It sits at ecliptic longitude ~134 deg, where SPHEREx's 6-monthly passes see the largest swing (~110 px).
+ * It only exists in a field centred on (ra, dec) that is wide enough to contain it (use 30 arcmin).
+ */
+export const PLANET_X_DEMO = { label: "Planet X (simulated)", ra: 136.5, dec: 16.6, distanceAU: 600, drift: { east: 60, north: -25 } };
 
 // =================================================================
 // Small helpers
@@ -155,7 +165,8 @@ export function renderPixels(field, size, mjd, yearsFromMid, wavelengthUm, rng) 
   // much brighter at long wavelengths (mock-only physics, just for fun/teaching).
   const m = field.mover;
   const colorBoost = 0.3 + 1.7 * Math.min(1, Math.max(0, (wavelengthUm - 1) / 3.5));
-  addPsf(m.x0 + m.vx * yearsFromMid, m.y0 + m.vy * yearsFromMid, m.flux * colorBoost);
+  const swing = m.wobble ? m.wobble(mjd) : { x: 0, y: 0 };        // only the simulated distant body swings (parallax)
+  addPsf(m.x0 + m.vx * yearsFromMid + swing.x, m.y0 + m.vy * yearsFromMid + swing.y, m.flux * colorBoost);
 
   return img;
 }
@@ -229,6 +240,7 @@ export function observe(ra, dec, fovArcmin) {       // exported for scratch/test
   const midMjd = (schedule[0].mjd + schedule[schedule.length - 1].mjd) / 2;
   const scale = (fovArcmin * 60) / size;
   placeKnownTargets(field, { ra, dec, size, scale, midMjd, fovArcmin });
+  placePlanetXDemo(field, { ra, dec, size, scale, midMjd });
 
   const obs = schedule.map((o, i) => {
     const frameRng = mulberry32(seed + i + 1);          // separate noise per frame
@@ -269,6 +281,21 @@ function placeKnownTargets(field, { ra, dec, size, scale, midMjd, fovArcmin }) {
       field.variable.knownAs = t.label;
     }
   }
+}
+
+/** If the simulated distant body (PLANET_X_DEMO) is inside the field, it replaces the mock mover. */
+function placePlanetXDemo(field, { ra, dec, size, scale, midMjd }) {
+  const { fx, fy } = skyToCanvas(PLANET_X_DEMO.ra, PLANET_X_DEMO.dec, { ra, dec, n: size, scaleArcsec: scale });
+  if (fx < 0.05 || fx > 0.95 || fy < 0.05 || fy > 0.95) return;
+  const m = field.mover;
+  m.x0 = fx * size; m.y0 = fy * size;                              // where it is on the middle date, without the swing
+  m.vx = -PLANET_X_DEMO.drift.east / scale;                        // east is LEFT
+  m.vy = -PLANET_X_DEMO.drift.north / scale;                       // north is UP
+  m.knownAs = PLANET_X_DEMO.label;
+  m.wobble = (mjd) => {
+    const p = parallaxOffsetArcsec(PLANET_X_DEMO.ra, PLANET_X_DEMO.dec, mjd, midMjd, PLANET_X_DEMO.distanceAU);
+    return { x: -p.east / scale, y: -p.north / scale };
+  };
 }
 
 /** Random flagged pixels (as a 0/1 array) matching the requested fraction. */
@@ -321,17 +348,21 @@ export async function getCutoutsMock({ ra, dec, fovArcmin, detector = "all" }) {
  * The mock sky is defined relative to the cutout CENTER, so we also need the query center.
  * Same output shape as the backend's /api/photometry.
  */
-export async function getPhotometryMock({ centerRa, centerDec, fovArcmin, ra, dec, radiusPx = 2 }) {
+export async function getPhotometryMock({ centerRa, centerDec, fovArcmin, ra, dec, radiusPx = 2, motion = null }) {
   await sleep(150);
   const { size, obs, scale } = observe(centerRa, centerDec, fovArcmin);
   // Sky -> pixel. Image convention (same as backend PNGs): north up, east LEFT, row 0 = top.
   const cosDec = Math.cos((centerDec * Math.PI) / 180);
   let dRa = ra - centerRa;
   if (dRa > 180) dRa -= 360; else if (dRa < -180) dRa += 360;
-  const x = size / 2 - (dRa * cosDec * 3600) / scale;
-  const y = size / 2 - ((dec - centerDec) * 3600) / scale;
+  const eastArcsec = dRa * cosDec * 3600, northArcsec = (dec - centerDec) * 3600;
 
   return obs.map((o) => {
+    // A MOVING object (motion = { epochMjd, pmEast, pmNorth } in arcsec/yr) is at (ra, dec) on epochMjd
+    // and elsewhere on the date of this frame: measure where it is THEN.
+    const years = motion ? (o.mjd - motion.epochMjd) / 365.25 : 0;
+    const x = size / 2 - (eastArcsec + (motion?.pmEast ?? 0) * years) / scale;
+    const y = size / 2 - (northArcsec + (motion?.pmNorth ?? 0) * years) / scale;
     const m = aperturePhotometry(o.pixels, size, x, y, radiusPx);
     return {
       mjd: Math.round(o.mjd * 1e5) / 1e5,

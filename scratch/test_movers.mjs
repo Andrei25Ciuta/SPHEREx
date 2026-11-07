@@ -42,7 +42,7 @@ const emptyField = () => ({
 // ---------------------------------------------------------------- 2) synthetic scenes
 // Three survey passes about half a year apart, a few visits each (like the mock schedule).
 const MJDS = [60800, 60801.7, 60803.4, 60983, 60984.7, 60986.4, 61165, 61166.7];
-function scene(seed, speed, angle) {
+function scene(seed, speed, angle, asFloat = false) {
   const rng = mulberry32(seed);
   const size = 120, field = emptyField();
   for (let i = 0; i < 90; i++) {
@@ -62,7 +62,8 @@ function scene(seed, speed, angle) {
   }
   const frames = MJDS.map((mjd, i) => ({
     mjd,
-    grey: stretchAsinh(renderPixels(field, size, mjd, (mjd - mid) / 365.25, 3.5, mulberry32(seed * 100 + i))),
+    grey: asFloat ? renderPixels(field, size, mjd, (mjd - mid) / 365.25, 3.5, mulberry32(seed * 100 + i))
+                  : stretchAsinh(renderPixels(field, size, mjd, (mjd - mid) / 365.25, 3.5, mulberry32(seed * 100 + i))),
   }));
   return { size, field, frames, mid };
 }
@@ -72,6 +73,20 @@ function isTrueMover(c, field, mid) {
   const dist = Math.hypot(c.x - (field.mover.x0 + field.mover.vx * years), c.y - (field.mover.y0 + field.mover.vy * years));
   const truthSpeed = Math.hypot(field.mover.vx, field.mover.vy);
   return dist < 1.0 && Math.abs(c.speedPx / truthSpeed - 1) < 0.2;
+}
+
+// Real pixel values (floats, as the backend now serves them): same scenes, no 8-bit stretch, some pixels with no data (NaN).
+for (const speed of [3, 1.3, 0.9]) {
+  let ok = 0, extra = 0;
+  const seeds = [41, 42, 43, 44];
+  for (const seed of seeds) {
+    const s = scene(seed, speed, mulberry32(seed)() * 2 * Math.PI, true);
+    for (const f of s.frames) for (let k = 0; k < 40; k++) f.grey[(k * 977) % f.grey.length] = NaN;
+    const { candidates } = findMoversInImages(s.frames, s.size, { sigmaFloor: 1e-9 });
+    if (candidates.some((c) => isTrueMover(c, s.field, s.mid))) ok++;
+    extra += candidates.filter((c) => !isTrueMover(c, s.field, s.mid)).length;
+  }
+  check(`float pixels (with NaN): finds a ${speed} px/yr mover (${(speed * 6.2).toFixed(1)}"/yr)`, ok === seeds.length && extra === 0, `${ok}/${seeds.length} found, ${extra} false`);
 }
 
 for (const speed of [12, 3, 1.7, 1.3]) {
@@ -100,6 +115,36 @@ for (const speed of [12, 3, 1.7, 1.3]) {
     falseAlarms += findMoversInImages(s.frames, s.size).candidates.length;
   }
   check("a field with nothing moving gives no candidates", falseAlarms === 0, `${falseAlarms} candidate(s) in 6 fields`);
+}
+
+// ---------------------------------------------------------------- 2b) pointing errors between passes (seen on real data)
+{
+  // Every exposure has its own small pointing error: here whole images are shifted by up to ~0.8 px between passes.
+  const rng = mulberry32(77);
+  const stars = Array.from({ length: 25 }, () => ({ x: 10 + rng() * 80, y: 10 + rng() * 80 }));
+  const mover = { x0: 50.3, y0: 47.1, vx: 1.6, vy: -0.9 };                  // px/yr (1.84 px/yr)
+  const mjds = [60800, 60801.5, 60803, 60983, 60984.5, 60986, 61165, 61166.5, 61168];
+  const passShift = [[0, 0], [0.8, -0.5], [-0.6, 0.7]];
+  const build = (register) => {
+    const jitter = () => (rng() - 0.5) * 0.1;
+    const frames = mjds.map((mjd, k) => {
+      const [sx, sy] = passShift[Math.floor(k / 3)];
+      const years = (mjd - 60983) / 365.25;
+      const sources = stars.map((s) => ({ x: s.x + sx + jitter(), y: s.y + sy + jitter(), snr: 30 }));
+      sources.push({ x: mover.x0 + mover.vx * years + sx + jitter(), y: mover.y0 + mover.vy * years + sy + jitter(), snr: 30 });
+      return { mjd, sources };
+    });
+    return findMovers(frames, { register });
+  };
+  const withReg = build(true), without = build(false);
+  const speed = Math.hypot(mover.vx, mover.vy);
+  check("without registration, whole-image shifts hide the mover", without.candidates.length === 0, `${without.candidates.length} candidate(s)`);
+  check("with registration only the real mover remains", withReg.candidates.length === 1, `${withReg.candidates.length} candidate(s)`);
+  check("... with about the right speed", withReg.candidates.length === 1 && Math.abs(withReg.candidates[0].speedPx / speed - 1) < 0.15,
+    withReg.candidates[0] ? `${withReg.candidates[0].speedPx.toFixed(2)} px/yr, true ${speed.toFixed(2)}` : "none");
+  const shifts = withReg.stats.shifts;
+  check("the measured image shifts match the pointing errors (relative to the first pass)",
+    shifts && Math.abs((shifts[3].dx - shifts[0].dx) - 0.8) < 0.1 && Math.abs((shifts[3].dy - shifts[0].dy) + 0.5) < 0.1, shifts ? JSON.stringify(shifts.slice(0, 4).map((s) => [+s.dx.toFixed(2), +s.dy.toFixed(2)])) : "none");
 }
 
 // ---------------------------------------------------------------- 3) the real mock, end to end

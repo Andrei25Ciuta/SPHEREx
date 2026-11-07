@@ -48,6 +48,7 @@
     <!-- ============ LEFT: search controls ============ -->
     <section class="panel controls" aria-labelledby="controls-title">
       <h2 id="controls-title">1. Choose a patch of sky</h2>
+      <p class="tour-launch"><button type="button" class="btn btn-small" id="tour-btn">Take the 1-minute tour</button></p>
 
       <form id="search-form" novalidate>
         <div class="field">
@@ -90,6 +91,11 @@
         <h3>Or try a test object</h3>
         <!-- Buttons get their coordinates from js/targets.js (step 2) -->
         <div id="quick-pick-list" class="chip-list" role="group" aria-label="Test objects"></div>
+        <!-- Only with synthetic data: the simulated body exists in js/data/mockSource.js, not in the sky -->
+        <div id="planetx-block" class="planetx-block">
+          <p class="muted small">Or a <strong>simulated</strong> body 600 AU away, for the Planet X mode (invented, not a prediction):</p>
+          <div class="chip-list"><button type="button" class="chip chip-sim" id="planetx-demo-btn" title="Loads a 30 arcmin field with a simulated distant body, then press Look for a distant body">Planet X (simulated)</button></div>
+        </div>
       </div>
 
       <details class="hint" open>
@@ -178,11 +184,14 @@
         <label class="check"><input type="checkbox" id="skip-flagged"> Skip frames with &gt; 1&nbsp;% flagged pixels</label>
         <label class="check"><input type="checkbox" id="show-track" checked disabled> Predicted position of known objects</label>
         <label class="check"><input type="checkbox" id="show-catalogue" disabled> Catalogue stars (SIMBAD) and their motion</label>
+        <label class="check"><input type="checkbox" id="show-asteroids" disabled> Known asteroids (SkyBoT)</label>
       </div>
       <!-- Filled when a test object is in the field: how far it should move, in pixels -->
       <p class="track-info" id="track-info" aria-live="polite"></p>
       <!-- Filled when "Catalogue stars" is ticked: what SIMBAD lists in this field -->
       <p class="track-info" id="catalogue-info" aria-live="polite"></p>
+      <!-- Filled when "Known asteroids" is ticked: which known Solar System bodies cross this field, per image date -->
+      <p class="track-info" id="asteroid-info" aria-live="polite"></p>
       <!-- Shown with "Show flagged pixels": what the red means -->
       <p class="flags-legend" id="flags-legend" hidden><span class="swatch" aria-hidden="true"></span> Red = flagged as bad data: hot, cold or dead pixels, overflow, ghosts, transients. Flags that only say &ldquo;a known source is here&rdquo; are ignored. The &ldquo;Flags&rdquo; figure below is the share of red pixels.</p>
 
@@ -190,12 +199,19 @@
       <div class="movers" id="movers">
         <div class="movers-head">
           <button type="button" class="btn btn-primary btn-small" id="find-movers-btn" disabled>Find movers</button>
+          <button type="button" class="btn btn-small" id="find-distant-btn" disabled title="Planet X mode: looks for a body in the outer Solar System. It swings back and forth as the Earth goes round the Sun (parallax), so its path is not a straight line, and the size of the swing gives its distance. Needs a wide field (about 30 arcmin).">Look for a distant body</button>
           <p class="movers-status" id="movers-status" role="status" aria-live="polite">Compares the dots in all images and lists the ones that moved.</p>
         </div>
         <ol class="mover-list" id="mover-list" aria-label="Candidate movers" hidden></ol>
+        <div class="mover-export" id="mover-export" hidden>
+          <button type="button" class="btn btn-small" id="export-csv-btn" title="One line per candidate: position, motion, significance, distance, known object, asteroid check, what the data is, and a link back to this view">Save list (CSV)</button>
+          <button type="button" class="btn btn-small" id="export-json-btn" title="The same, as JSON, with the field, the date and a reminder that candidates are not discoveries">Save list (JSON)</button>
+        </div>
         <div class="mover-detail" id="mover-detail" hidden>
           <p id="mover-detail-text"></p>
+          <p id="mover-colour" class="mover-colour" role="status" aria-live="polite" hidden></p>
           <button type="button" class="btn btn-small" id="mover-map-btn">Check in sky map</button>
+          <button type="button" class="btn btn-small" id="mover-spectrum-btn" title="Measure the candidate in every image, where it is on that image's date, and plot flux against wavelength">Spectrum along its path</button>
         </div>
       </div>
 
@@ -232,11 +248,11 @@
       <p class="measure-pos" id="measure-pos" aria-live="polite"></p>
       <div class="charts" id="charts" hidden>
         <figure class="chart">
-          <figcaption>Spectrum at the marked position</figcaption>
+          <figcaption id="spectrum-caption">Spectrum at the marked position</figcaption>
           <div id="spectrum-chart" class="chart-box"></div>
         </figure>
         <figure class="chart">
-          <figcaption>Light curve at the marked position</figcaption>
+          <figcaption id="lightcurve-caption">Light curve at the marked position</figcaption>
           <div id="lightcurve-chart" class="chart-box"></div>
         </figure>
       </div>

@@ -15,8 +15,18 @@ export async function getCutoutsApi({ ra, dec, fovArcmin, detector }) {
   return body.frames;
 }
 
-export async function getPhotometryApi({ ra, dec, detector = "all" }) {
+/**
+ * motion (optional): follow a MOVING object. { epochMjd, pmEast, pmNorth }: it is at (ra, dec) on
+ * epochMjd and moves pmEast / pmNorth arcsec per year; the backend measures at its place in every frame.
+ */
+export async function getPhotometryApi({ ra, dec, detector = "all", radiusPx, motion }) {
   const params = new URLSearchParams({ ra, dec, det: detector });
+  if (radiusPx) params.set("radius", radiusPx);
+  if (motion) {
+    params.set("epoch_mjd", motion.epochMjd);
+    params.set("pm_east", motion.pmEast);
+    params.set("pm_north", motion.pmNorth);
+  }
   const body = await getJson(`${API_BASE}/api/photometry?${params}`);
   if (!body || !Array.isArray(body.points)) {
     throw new Error("The data server response has no \"points\" list.");

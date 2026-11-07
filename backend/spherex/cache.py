@@ -36,6 +36,13 @@ def save_png(key: str, i: int | str, png: bytes) -> str:
     return f"cutouts/{name}"
 
 
+def save_bytes(key: str, name: int | str, data: bytes, ext: str) -> str:
+    """Any binary side file of a response (e.g. the float pixels, "f32"); returns its relative URL."""
+    file = f"{key}_{name}.{ext}"
+    (CACHE_DIR / file).write_bytes(data)
+    return f"cutouts/{file}"
+
+
 def save(key: str, frames: list[dict]):
     tmp = CACHE_DIR / f"{key}.json.tmp"
     tmp.write_text(json.dumps(frames), encoding="utf-8")

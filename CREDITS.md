@@ -7,7 +7,8 @@ Our own code is under the [MIT licence](LICENSE); the items below keep their own
 
 | What | Where it comes from | Used for |
 |---|---|---|
-| **SPHEREx images** (real data, *not used yet*) | NASA/JPL-Caltech, SPHEREx mission; distributed by the NASA/IPAC Infrared Science Archive (IRSA), https://irsa.ipac.caltech.edu | The goal of the project. Today the app runs on **synthetic mock data** made in the browser (`frontend/js/data/mockSource.js`) or on fake FITS files (`backend/scripts/make_test_fits.py`). Neither is SPHEREx data. |
+| **SPHEREx images** (real data, used on the author's machine only) | NASA/JPL-Caltech, SPHEREx mission; distributed by the NASA/IPAC Infrared Science Archive (IRSA), https://irsa.ipac.caltech.edu | Validation (see [docs/VALIDATION.md](docs/VALIDATION.md)): 32 small cutouts of Barnard's Star and Epsilon Indi B, fetched with `backend/scripts/fetch_real_sample.py` into `backend/data/real/`, which git ignores. **They are not in this repository and not in the public demo**: the licence and terms of use of the data have not been checked. The public demo runs on **synthetic mock data** made in the browser (`frontend/js/data/mockSource.js`) or on fake FITS files (`backend/scripts/make_test_fits.py`); neither is SPHEREx data. |
+| **Known Solar System bodies** | SkyBoT, IMCCE / Paris Observatory (https://ssp.imcce.fr/webservices/skybot/), queried from the browser with no account or key | The "Known asteroids" overlay and the asteroid check of Find movers. Check the service's page for the exact citation it asks for. |
 | **Sky pictures** 2MASS, AllWISE, DSS2 | HiPS surveys made by CDS Strasbourg (P. Fernique, A. Oberto, T. Boch), served from ESA's public mirror (`skies.esac.esa.int`) or from IRSA's copy (relayed by our backend). Original data: 2MASS = University of Massachusetts and IPAC/Caltech; AllWISE = UCLA and JPL/Caltech, funded by NASA; DSS = Space Telescope Science Institute (see the `obs_ack` line in each survey's `properties` file for the full acknowledgement) | Section 4 of the page ("What is known here?") |
 | **Catalogue objects and test targets** | SIMBAD, CDS Strasbourg, queried through its Harvard mirror (`simbad.harvard.edu`). Positions and proper motions of the five test objects are in `frontend/js/targets.js`, each with its reference (`coordRef`) | The sky map, the quick-pick buttons, the predicted-position overlay and the "known object" label of Find movers |
 
@@ -15,6 +16,11 @@ Suggested acknowledgement lines (check the exact wording on each archive's page 
 
 - "This research has made use of the SIMBAD database, operated at CDS, Strasbourg, France."
 - "This research has made use of the NASA/IPAC Infrared Science Archive, which is operated by the Jet Propulsion Laboratory, California Institute of Technology, under contract with NASA."
+
+## Methods taken from the literature
+
+- **Position of the Earth** (Planet X mode, `frontend/js/features/parallax.js`): the low-precision Sun formula of J. Meeus, *Astronomical Algorithms* (2nd ed., Willmann-Bell, 1998), chapter 25, written from the published formula, then checked against known dates (solstice, perihelion, aphelion, J2000.0) in `scratch/test_parallax.mjs`.
+- **Windowed centroid, upper-half sigma, aperture photometry with a background ring**: standard techniques, written for this project.
 
 ## Software loaded in the browser (not copied into this repository)
 

@@ -10,6 +10,7 @@
 import { getPhotometry } from "../data/getCutouts.js";
 import { formatRA, formatDec } from "../coords.js";
 import { canvasToSky } from "../geometry.js";
+import { fluxColumn } from "./spectrum.js";
 
 const PLOTLY_URL = "https://cdn.jsdelivr.net/npm/plotly.js-basic-dist-min@2.35.2/plotly-basic.min.js";
 
@@ -76,7 +77,14 @@ const PLOT_CONFIG = {
   modeBarButtonsToRemove: ["select2d", "lasso2d", "autoScale2d", "toggleSpikelines"],
 };
 
-function spectrumTraces(points) {
+// Real files are in MJy/sr, so the backend also sends Jansky; the mock and old files only have image units.
+const fluxOf = (p, col) => p[col];
+const errOf = (p, col) => (col === "fluxJy" ? p.fluxJyErr : p.fluxErr) ?? 0;
+const fluxLabel = (col) => (col === "fluxJy" ? "Flux (Jy)" : "Flux (image units)");
+const hoverFormat = (col) => (col === "fluxJy" ? ".3g" : ".1f");
+const showFlux = (v, col) => (v === null || v === undefined ? "—" : col === "fluxJy" ? v.toPrecision(3) : v.toFixed(1));
+
+function spectrumTraces(points, col = "flux") {
   const passes = groupIntoPasses(points.filter((p) => p.flux !== null));
   // Keep the passes with the most points if there are more than we can colour safely.
   const shown = passes.length > MAX_PASSES
@@ -85,16 +93,16 @@ function spectrumTraces(points) {
   return shown.map((pass, i) => ({
     type: "scatter", mode: "markers", name: pass.label,
     x: pass.points.map((p) => p.wavelengthUm),
-    y: pass.points.map((p) => p.flux),
-    error_y: { type: "data", array: pass.points.map((p) => p.fluxErr ?? 0), color: SERIES[i], thickness: 1.5, width: 0 },
+    y: pass.points.map((p) => fluxOf(p, col)),
+    error_y: { type: "data", array: pass.points.map((p) => errOf(p, col)), color: SERIES[i], thickness: 1.5, width: 0 },
     error_x: { type: "data", array: pass.points.map((p) => (p.wavelengthMaxUm - p.wavelengthMinUm) / 2), color: SERIES[i], thickness: 1, width: 0 },
     marker: { color: SERIES[i], size: 9, symbol: PASS_SYMBOLS[i], line: { color: SURFACE, width: 2 } },
     customdata: pass.points.map((p) => [p.detector, p.dateISO.slice(0, 10), p.flagged ? " ⚠ flagged" : ""]),
-    hovertemplate: "%{x:.3f} µm · %{customdata[0]}<br>%{customdata[1]}<br>flux %{y:.1f}%{customdata[2]}<extra>%{fullData.name}</extra>",
+    hovertemplate: `%{x:.3f} µm · %{customdata[0]}<br>%{customdata[1]}<br>flux %{y:${hoverFormat(col)}}${col === "fluxJy" ? " Jy" : ""}%{customdata[2]}<extra>%{fullData.name}</extra>`,
   }));
 }
 
-function lightCurveTraces(points) {
+function lightCurveTraces(points, col = "flux") {
   const byDet = new Map();
   for (const p of points) if (p.flux !== null) {
     if (!byDet.has(p.detector)) byDet.set(p.detector, []);
@@ -106,48 +114,66 @@ function lightCurveTraces(points) {
       const c = SERIES[detIndex(det)];
       return {
         type: "scatter", mode: "lines+markers", name: det,
-        x: pts.map((p) => p.dateISO), y: pts.map((p) => p.flux),
-        error_y: { type: "data", array: pts.map((p) => p.fluxErr ?? 0), color: c, thickness: 1.5, width: 0 },
+        x: pts.map((p) => p.dateISO), y: pts.map((p) => fluxOf(p, col)),
+        error_y: { type: "data", array: pts.map((p) => errOf(p, col)), color: c, thickness: 1.5, width: 0 },
         line: { color: c, width: 2 },
         marker: { color: c, size: 8, line: { color: SURFACE, width: 2 } },
         customdata: pts.map((p) => [p.wavelengthUm, p.flagged ? " ⚠ flagged" : ""]),
-        hovertemplate: "%{x|%Y-%m-%d}<br>%{customdata[0]:.3f} µm<br>flux %{y:.1f}%{customdata[1]}<extra>" + det + "</extra>",
+        hovertemplate: `%{x|%Y-%m-%d}<br>%{customdata[0]:.3f} µm<br>flux %{y:${hoverFormat(col)}}${col === "fluxJy" ? " Jy" : ""}%{customdata[1]}<extra>${det}</extra>`,
       };
     });
 }
 
-function renderTable(table, points) {
+function renderTable(table, points, col = "flux") {
+  const unit = col === "fluxJy" ? " (Jy)" : "";
   const rows = points.map((p) => `<tr><td>${p.dateISO.slice(0, 16).replace("T", " ")}</td><td>${p.detector}</td>
-    <td>${p.wavelengthUm.toFixed(3)}</td><td>${p.flux === null ? "—" : p.flux.toFixed(1)}</td>
-    <td>${p.fluxErr === null ? "—" : p.fluxErr.toFixed(1)}</td><td>${p.flagged ? "⚠" : ""}</td></tr>`).join("");
-  table.innerHTML = `<thead><tr><th>Date (UTC)</th><th>Detector</th><th>λ (µm)</th><th>Flux</th><th>± Error</th><th>Flag</th></tr></thead><tbody>${rows}</tbody>`;
+    <td>${p.wavelengthUm.toFixed(3)}</td><td>${showFlux(p.flux === null ? null : fluxOf(p, col), col)}</td>
+    <td>${p.flux === null ? "—" : showFlux(errOf(p, col), col)}</td><td>${p.flagged ? "⚠" : ""}</td></tr>`).join("");
+  table.innerHTML = `<thead><tr><th>Date (UTC)</th><th>Detector</th><th>λ (µm)</th><th>Flux${unit}</th><th>± Error</th><th>Flag</th></tr></thead><tbody>${rows}</tbody>`;
 }
 
 /**
  * Measure at one position and draw everything.
  * els: { pos, charts, note, tableWrap, table, spectrum, lightcurve }
  */
-export async function measureAndPlot({ query, sky, els, isCurrent }) {
-  els.pos.textContent = `Measuring at RA ${formatRA(sky.ra)}  Dec ${formatDec(sky.dec)} …`;
+export async function measureAndPlot({ query, sky, els, isCurrent, motion = null, title = null }) {
+  // motion = { epochMjd, pmEast, pmNorth } (arcsec/yr): follow a MOVING object, i.e. measure each image
+  // where the object is on THAT image's date. Without it: one fixed sky position (a star).
+  els.pos.textContent = motion ? `Measuring ${title ?? "the candidate"} along its path …`
+    : `Measuring at RA ${formatRA(sky.ra)}  Dec ${formatDec(sky.dec)} …`;
   const points = await getPhotometry({
     centerRa: query.ra, centerDec: query.dec, fovArcmin: query.fov,
-    ra: sky.ra, dec: sky.dec, radiusPx: APERTURE_RADIUS_PX,
+    ra: sky.ra, dec: sky.dec, radiusPx: APERTURE_RADIUS_PX, motion,
   });
   if (!isCurrent()) return;
 
-  const offset = `${Math.abs(sky.eastArcsec).toFixed(1)}″ ${sky.eastArcsec >= 0 ? "E" : "W"}, ` +
-                 `${Math.abs(sky.northArcsec).toFixed(1)}″ ${sky.northArcsec >= 0 ? "N" : "S"} of centre`;
+  const col = fluxColumn(points);
   const valid = points.filter((p) => p.flux !== null);
-  els.pos.textContent = `Marked: RA ${formatRA(sky.ra)}  Dec ${formatDec(sky.dec)}  (${offset}) · ${valid.length} measurements`;
+  if (motion) {
+    els.pos.textContent = `${title ?? "Candidate"}: measured along its path (${motion.pmEast.toFixed(2)}″/yr east, ${motion.pmNorth.toFixed(2)}″/yr north) · ${valid.length} measurements`;
+  } else {
+    const offset = `${Math.abs(sky.eastArcsec).toFixed(1)}″ ${sky.eastArcsec >= 0 ? "E" : "W"}, ` +
+                   `${Math.abs(sky.northArcsec).toFixed(1)}″ ${sky.northArcsec >= 0 ? "N" : "S"} of centre`;
+    els.pos.textContent = `Marked: RA ${formatRA(sky.ra)}  Dec ${formatDec(sky.dec)}  (${offset}) · ${valid.length} measurements`;
+  }
+  if (els.spectrumCaption) els.spectrumCaption.textContent = motion ? "Spectrum along the candidate's path" : "Spectrum at the marked position";
+  if (els.lightcurveCaption) els.lightcurveCaption.textContent = motion ? "Light curve along the candidate's path" : "Light curve at the marked position";
+  if (els.note) {
+    els.noteHtml ??= els.note.innerHTML;                                // the text written in index.html
+    if (motion) els.note.textContent = `Flux = background-subtracted sum in a ${APERTURE_RADIUS_PX}-pixel aperture placed where the candidate is on each image's date` +
+      (col === "fluxJy" ? ", converted from MJy/sr to Jansky with the pixel size. A quick aperture sum, not SPHEREx's own calibrated photometry: treat the absolute values as approximate." : ", in image units (not calibrated).") +
+      " The 1–2 µm and 4–5 µm points come from different detectors, so compare the shape of the spectrum, not single points.";
+    else els.note.innerHTML = els.noteHtml;
+  }
 
-  renderTable(els.table, points);
+  renderTable(els.table, points, col);
   els.tableWrap.hidden = false;
   els.note.hidden = false;
   els.charts.hidden = false;
 
   if (!valid.length) {
     els.pos.textContent += " – too close to the edge, nothing measured.";
-    return;
+    return points;
   }
 
   let Plotly;
@@ -156,11 +182,12 @@ export async function measureAndPlot({ query, sky, els, isCurrent }) {
     els.charts.hidden = true;
     els.pos.textContent += ` (${err.message} The table below has the same numbers.)`;
     els.tableWrap.open = true;
-    return;
+    return points;
   }
-  if (!isCurrent()) return;
-  await Plotly.react(els.spectrum, spectrumTraces(points), baseLayout("Wavelength (µm)", "Flux (image units)", "linear"), PLOT_CONFIG);
-  await Plotly.react(els.lightcurve, lightCurveTraces(points), baseLayout("Date", "Flux (image units)", "date"), PLOT_CONFIG);
+  if (!isCurrent()) return points;
+  await Plotly.react(els.spectrum, spectrumTraces(points, col), baseLayout("Wavelength (µm)", fluxLabel(col), "linear"), PLOT_CONFIG);
+  await Plotly.react(els.lightcurve, lightCurveTraces(points, col), baseLayout("Date", fluxLabel(col), "date"), PLOT_CONFIG);
+  return points;
 }
 
 /** Remove charts (e.g. new position loaded). */

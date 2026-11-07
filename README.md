@@ -2,6 +2,10 @@
 
 > **Notice:** this repository is a **personal practice / mock project** (built with AI assistance, Claude Code), started on 2026-11-05, **before** the NASA Space Apps 2026 hackathon (14-15 Nov 2026). It is not a competition submission.
 
+![Blink and difference of a synthetic field: stars stay, the brown dwarf moves. Labelled SYNTHETIC DATA - NOT SPHEREx](docs/img/demo.gif)
+
+*Blink and difference of a **synthetic** field (invented data, **not** SPHEREx; the label is on every frame). Made by `scripts/make_demo_gif.py`.*
+
 **NASA Space Apps Challenge 2026 – "Planet X and SPHEREx".**
 Enter a sky position → see NASA SPHEREx infrared images of that spot taken on different
 dates, flipped like a mini-video ("blinking"). Stars stay still; things that **move**
@@ -17,6 +21,11 @@ dates, flipped like a mini-video ("blinking"). Stars stay still; things that **m
 | **Trail** | Brightest value of each pixel over all dates: a mover leaves a **trail of dots**. |
 | **Compare** | You pick **image A** and **image B** (single images, or a whole survey pass averaged) and an operation: **A − B** (orange = brighter in A, blue = fainter in A: a mover is an orange dot next to a blue one, still stars vanish) or **A + B** (average, a deeper picture). Starts at "latest pass − earliest pass". Note: other dates are also other wavelengths, so bright stars can leave a faint leftover. |
 | **Find movers** | One button: finds the dots in every image, links them across survey passes and lists the ones that **moved**, best first (speed in ″/yr, direction, position, how many images, significance). Click one to see its path on the blink; objects from the test list (and SIMBAD objects, with real data) are labelled "(known)"; **Check in sky map** opens the map on it. Details and limits: see below. |
+| **Spectrum along its path** | For a candidate, measures it **where it is on each image's date** (not at one fixed spot) and plots flux against wavelength (in Jansky with real data). A colour hint compares the flux at 4–5 µm with 1–2 µm: star-like, neutral, red (a warm asteroid or a cool brown dwarf) or very red (a cold brown dwarf). It is a hint on uncalibrated aperture sums, and it says so when the pixels are flagged (a very bright star can overflow the detector) instead of guessing. |
+| **Look for a distant body** (Planet X mode) | A body hundreds of AU away is not a straight-line mover: as the Earth goes round the Sun it swings back and forth (412″ per 1 AU / 500 AU). This button tests every triple of dots from three survey passes for "the middle one is displaced exactly as the Earth's motion predicts, for some distance" and lists the bodies that follow it, with a distance and range, the body's own drift, and whether that is a speed a body bound to the Sun can have. The synthetic demo has a **simulated** body at 600 AU: press the dashed **Planet X (simulated)** chip, then the button. Details and limits: [docs/VALIDATION.md](docs/VALIDATION.md) §5. |
+| **Known asteroids** (real data) | Tick "Known asteroids (SkyBoT)": the known asteroids and comets inside the field are drawn as amber diamonds **at the date of each image** (a main-belt asteroid crosses a 5′ field in about half a day, so it is a different dot in every image and can never be linked over months). After *Find movers*, a candidate sitting on a known body says so. IMCCE's SkyBoT answers directly to the browser (no backend proxy). |
+| **Export** | After a search, **Save list (CSV / JSON)**: one line per candidate (position, motion, significance, distance, known object, asteroid check) with a column saying whether the data is real or **synthetic** and a link back to the exact view. |
+| **Tour** | "Take the 1-minute tour": eight coach marks over the workspace; works offline, changes nothing. |
 | **Predicted position** | For the test objects, cream ticks show where the catalogue (SIMBAD position + proper motion) says the object must be on each frame's date, plus how far it moves in pixels. If the object sits on the ticks, the whole chain (archive → cutout → orientation → timing) is right. |
 | **Catalogue stars** (real data) | Tick "Catalogue stars (SIMBAD)": the catalogued objects of the field are drawn as small teal rings, **moved to the date of each image** with their catalogue proper motion; those moving more than 1″/yr also get their name and path. SIMBAD positions are for the year 2000, so fast movers are searched in a wider circle (Barnard's Star is 4.5′ from its year-2000 spot). The same list lets **Find movers** say "(known)" for any SIMBAD object, not only the 5 test objects. Off with synthetic data (invented stars would not match SIMBAD). |
 | **All detectors** | One averaged thumbnail per detector (D1–D6, 0.75–5 µm); click to blink it. |
@@ -36,7 +45,13 @@ respected (no auto-play), colour-blind-checked chart palette, table view of all 
 2. **Link**: two dots from two *different survey passes* define a straight line (position = start + velocity × time). A line counts only if dots from **at least 3 passes** lie on it (two points always make a line; a third pass is the proof). Still stars are found first (zero velocity); movers are lines whose velocity is significantly different from zero (≥ 6 σ and at least ~1 pixel of total motion).
 3. **Report** the movers, best first. Checked by `scratch/test_movers.mjs`: on the mock sky it finds the planted mover in 35 of 39 fields with no false candidates, and re-discovers Barnard's Star and WISE 0855 on their real catalogue speeds.
 
-Limits, on purpose for v1: it uses **positions only** (through SPHEREx's variable filter the same star has a different brightness in every image, so brightness says nothing about motion); motion below ~1 pixel (6″) over the whole period looks like a still star (Epsilon Indi B is too slow); a mover that blends with a bright star is missed; a dot too faint in one wavelength band is missed, so **try another detector**; it needs images from ≥ 3 survey passes about 6 months apart, otherwise the button says so. It works on the 8-bit pictures the player shows, not on calibrated fluxes.
+With **real data** it works on the real float pixel values the backend serves (`dataUrl`), not on the 8-bit pictures, and first registers the images on the field stars (every exposure has its own pointing error, up to ~0.7 px between passes). With synthetic data it uses the 8-bit pictures of the player.
+
+Limits, on purpose for v1: it uses **positions only** (through SPHEREx's variable filter the same star has a different brightness in every image, so brightness says nothing about motion); motion below ~1 pixel (6″) over the whole period looks like a still star; a mover that blends with a bright star is missed; a very bright star saturates and its position is unreliable (see Validation); a dot too faint in one wavelength band is missed, so **try another detector**; it needs images from ≥ 3 survey passes about 6 months apart, otherwise the button says so.
+
+### Validation on real data
+
+Run blind on real SPHEREx cutouts (not in this repository), **Find movers** recovered Barnard's Star and Epsilon Indi B with **0 false candidates**; the measured motion is within 0.55 ″/yr (Barnard, detector D6) and 0.61 ″/yr (Epsilon Indi B) of the catalogue, and 3.7 ″/yr off for Barnard in detector D2, where its core is strongly saturated (the cause is not yet known). **Planet X mode and the colour hint have not been confirmed on real images**, and no real asteroid has been detected yet. Everything measured, how to re-run it and every limit: **[docs/VALIDATION.md](docs/VALIDATION.md)**. Material for presenting it: [docs/PITCH.md](docs/PITCH.md).
 
 ## Run – frontend only (mock data, no install)
 
@@ -103,8 +118,8 @@ Nothing else changes. http://localhost:8001/ also serves the frontend itself.
 
 | Endpoint | Returns |
 |---|---|
-| `GET /api/cutouts?ra=&dec=&fov=&det=` | `{ frames: Frame[] }` – contract in `frontend/js/data/getCutouts.js` |
-| `GET /api/photometry?ra=&dec=&det=&radius=` | `{ points: Point[] }` – aperture photometry per frame |
+| `GET /api/cutouts?ra=&dec=&fov=&det=` | `{ frames: Frame[] }` – contract in `frontend/js/data/getCutouts.js`; each frame also has `dataUrl`, the same pixels as raw little-endian float32 |
+| `GET /api/photometry?ra=&dec=&det=&radius=` | `{ points: Point[] }` – aperture photometry per frame, in image units and (files in MJy/sr) in Jansky. For a **moving** object add `epoch_mjd=&pm_east=&pm_north=` (arcsec/yr): each frame is measured where the object is on its date |
 | `GET /api/hips/<survey>/<file>` | IRSA HiPS sky tiles relayed with CORS (allowlist of 3 surveys) |
 | `GET /api/health` | indexed files + files that could not be read |
 | `GET /cutouts/<file>.png` | cached cutout / flag-mask PNGs |
@@ -126,7 +141,14 @@ node scratch/test_measure.mjs
 node scratch/test_movers.mjs
 node scratch/test_compare.mjs
 node scratch/test_catalogue.mjs
+node scratch/test_spectrum.mjs
+node scratch/test_parallax.mjs
+node scratch/test_skybot.mjs
+node scratch/test_export.mjs
+node scratch/test_tour.mjs
 ```
+
+Two more scripts need the backend and real files (they print a Markdown report): `scratch/validate_real.mjs` (blind test of Find movers against SIMBAD) and `scratch/validate_asteroids.mjs` (known asteroids against real cutouts); see [docs/VALIDATION.md](docs/VALIDATION.md). To remake the README GIF from the synthetic files: `backend/.venv/Scripts/python.exe scripts/make_demo_gif.py` (backend running).
 
 Backend (pytest; synthetic FITS files made on the fly, no real data and no network needed):
 
@@ -135,7 +157,7 @@ backend/.venv/Scripts/python.exe -m pip install -r backend/requirements-dev.txt
 backend/.venv/Scripts/python.exe -m pytest backend
 ```
 
-They cover `cutout` (north up / east left, rotated frames, edges, flags), `photometry`, `query` (headers, bad files), `stretch` and the `hips_proxy` allowlist. The HTTP layer in `backend/app.py` is not covered yet.
+111 tests cover `cutout` (north up / east left, rotated frames, edges, flags, bilinear resampling), `photometry` (including a moving object), `query` (headers, bad files, distortion that cannot be inverted), `stretch` and the `hips_proxy` allowlist. The HTTP layer in `backend/app.py` is not covered yet. The browser-side modules have 231 checks in the Node tests above.
 
 `scratch/check_track.js` is a browser-console helper that measures, frame by frame, how far
 WISE 0855 is from its predicted position (use it again on real data).
@@ -147,16 +169,18 @@ frontend/            static site, no build step (ES modules)
   js/main.js         wires UI ↔ modules
   js/player.js       blink player + difference / stack / trail maths
   js/data/           getCutouts.js (THE interface), mockSource.js, apiSource.js
-  js/features/       movers.js (Find movers), compare.js (Compare A − B), catalogue.js (SIMBAD overlay), measure.js (spectrum + light curve),
-                     skyContext.js (Aladin), fullscreen.js, exporters.js
+  js/features/       movers.js (Find movers), parallax.js (Planet X mode), spectrum.js (colour hint), skybot.js (known asteroids),
+                     compare.js (Compare A − B), catalogue.js (SIMBAD overlay), measure.js (spectrum + light curve), export.js (CSV / JSON),
+                     tour.js (guided tour), skyContext.js (Aladin), fullscreen.js, exporters.js
 backend/             FastAPI + astropy
-  spherex/           query.py, cutout.py, stretch.py, photometry.py, cache.py, hips_proxy.py
-  scripts/           inspect_fits.py, make_test_fits.py
+  spherex/           query.py, cutout.py, stretch.py, photometry.py, flags.py, floatdata.py, cache.py, hips_proxy.py
+  scripts/           inspect_fits.py, make_test_fits.py, fetch_real_sample.py
   tests/             pytest suite
-scripts/             serve_frontend.py (dev server for the frontend, no stale cache)
-scratch/             Node tests (test_*.mjs) and helpers
+scripts/             serve_frontend.py (dev server for the frontend, no stale cache), make_demo_gif.py (README GIF, labelled synthetic)
+scratch/             Node tests (test_*.mjs), validate_real.mjs, validate_asteroids.mjs and helpers
 .github/workflows/   pages.yml (GitHub Pages demo)
-docs/                DATA_CHECKLIST.md, SUBMISSION.md
+docs/                VALIDATION.md (what was measured on real data), PITCH.md (3-minute script, slides, questions),
+                     DATA_CHECKLIST.md, IRSA_FACTS.md, REAL_DATA_TEST.md, SUBMISSION.md, img/demo.gif
 ```
 
 ## Licence, credits & data
@@ -166,5 +190,6 @@ Code: [MIT](LICENSE). Full list of sources, third-party licences and how the pro
 - **SPHEREx** – NASA/JPL-Caltech; data from the NASA/IPAC Infrared Science Archive (IRSA).
 - **2MASS, AllWISE, DSS2** sky images – HiPS surveys made by CDS Strasbourg, served from ESA's public mirror (skies.esac.esa.int) or IRSA's copy (relayed by our backend); original data: UMass/IPAC-Caltech (2MASS), NASA/IPAC (AllWISE), STScI (DSS).
 - **SIMBAD** – CDS Strasbourg, queried through its Harvard mirror.
+- **SkyBoT** – known Solar System bodies at a given date, IMCCE / Paris Observatory, queried from the browser (see CREDITS.md).
 - **Aladin Lite** v3 (CDS) and **Plotly.js** – loaded from the jsDelivr CDN on demand.
 - Test object coordinates: SIMBAD, with references in `frontend/js/targets.js`.

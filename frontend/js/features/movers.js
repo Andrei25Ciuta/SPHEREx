@@ -33,6 +33,7 @@ export const DEFAULTS = {
   minMotionPx: 0.8,         // total motion over the observed period (about 5")
   minSignificance: 6,       // speed divided by its uncertainty
   centroidFloorPx: 0.15,    // never trust a dot's position better than this
+  sigmaFloor: 0.5,          // smallest noise (in grey levels) we believe; use ~1e-9 for real (float) pixel values
 };
 const GRID_CELL = 8;        // px, for the neighbour lookup
 
@@ -60,14 +61,29 @@ function smooth(grey, n) {
  * Noise = 84th percentile minus median ("upper-half sigma"): stars hardly move it, and it is
  * not fooled by the dark end being clipped at 0 in 8-bit pictures.
  */
-function backgroundStats(img) {
+function backgroundStats(img, sigmaFloor = DEFAULTS.sigmaFloor) {
   const step = Math.max(1, Math.floor(img.length / 20000));
   const sample = [];
   for (let i = 0; i < img.length; i += step) sample.push(img[i]);
   sample.sort((a, b) => a - b);
   const q = (p) => sample[Math.min(sample.length - 1, Math.floor(p * sample.length))];
   const median = q(0.5);
-  return { median, sigma: Math.max(0.5, q(0.8413) - median) };
+  return { median, sigma: Math.max(sigmaFloor, q(0.8413) - median) };
+}
+
+/** Pixels with no data (NaN, e.g. beyond the edge of the detector) become the median, so they cannot become "dots". */
+function fillMissing(img) {
+  let bad = 0;
+  for (let i = 0; i < img.length; i++) if (!Number.isFinite(img[i])) bad++;
+  if (!bad) return img;
+  const finite = [];
+  const step = Math.max(1, Math.floor(img.length / 20000));
+  for (let i = 0; i < img.length; i += step) if (Number.isFinite(img[i])) finite.push(img[i]);
+  finite.sort((a, b) => a - b);
+  const median = finite.length ? finite[Math.floor(finite.length / 2)] : 0;
+  const out = new Float32Array(img.length);
+  for (let i = 0; i < img.length; i++) out[i] = Number.isFinite(img[i]) ? img[i] : median;
+  return out;
 }
 
 /** Is pixel (x, y) the top of its 3x3 neighbourhood? Ties go to the first pixel in reading order. */
@@ -116,10 +132,11 @@ function centroid(grey, n, px, py, background) {
  * Dots in one grey image (n x n, values 0..255, row 0 = top).
  * Returns [{ x, y, snr }] with x, y in "edge" pixel coordinates (centre of pixel 0 = 0.5).
  */
-export function detectSources(grey, n, { detectSigma = DEFAULTS.detectSigma, edgeMargin = DEFAULTS.edgeMargin } = {}) {
-  if (!grey || grey.length !== n * n || n < 2 * edgeMargin + 3) return [];
+export function detectSources(image, n, { detectSigma = DEFAULTS.detectSigma, edgeMargin = DEFAULTS.edgeMargin, sigmaFloor = DEFAULTS.sigmaFloor } = {}) {
+  if (!image || image.length !== n * n || n < 2 * edgeMargin + 3) return [];
+  const grey = fillMissing(image);          // `image` may be 8-bit grey values or real (float) pixel values
   const sm = smooth(grey, n);
-  const { median, sigma } = backgroundStats(sm);
+  const { median, sigma } = backgroundStats(sm, sigmaFloor);
   const threshold = median + detectSigma * sigma;
   const found = [];
   for (let y = edgeMargin; y < n - edgeMargin; y++) {
@@ -209,8 +226,7 @@ export function passIndices(mjds, minGapDays = DEFAULTS.minPassGapDays) {
  *     points: [{ frame, x, y }] }     the dots that belong to it
  * sorted best first (largest significance).
  */
-export function findMovers(frames, options = {}) {
-  const o = { ...DEFAULTS, ...options };
+function findMoversOnce(frames, o) {
   const N = frames.length;
   const stats = { frames: N, passes: 0, dotsPerFrame: frames.map((f) => f.sources.length), stillDots: 0 };
   if (N < 3) return { candidates: [], stats, reason: "needs at least 3 images" };
@@ -327,6 +343,70 @@ export function findMovers(frames, options = {}) {
 
   candidates.sort((p, q) => q.significance - p.significance);
   return { candidates, stats };
+}
+
+const median = (values) => {
+  const s = [...values].sort((a, b) => a - b);
+  return s.length ? s[Math.floor(s.length / 2)] : 0;
+};
+
+/**
+ * How far is each image shifted from the reference image (the one with most dots)?
+ * Every exposure has its own small pointing error (real SPHEREx passes differ by up to ~0.7 px), and
+ * over a one-year baseline that looks like a motion of several arcsec/yr. The stars all shift
+ * together, so the shift is the translation that makes most dots of the two images coincide: every
+ * pair of dots votes for its offset; the field stars pile their votes on one offset, a mover or a
+ * chance pair adds a single vote somewhere else. No vote winner = shift 0.
+ */
+export function registerShifts(frames, { maxShiftPx = 3, binPx = 0.25, minVotes = 5 } = {}) {
+  let ref = 0;
+  frames.forEach((f, k) => { if (f.sources.length > frames[ref].sources.length) ref = k; });
+  const shifts = frames.map(() => ({ dx: 0, dy: 0, votes: 0 }));
+  const bins = Math.round((2 * maxShiftPx) / binPx) + 1;
+  for (let k = 0; k < frames.length; k++) {
+    if (k === ref) continue;
+    const hist = new Float32Array(bins * bins);
+    const pairs = [];
+    for (const a of frames[ref].sources) {
+      for (const b of frames[k].sources) {
+        const dx = b.x - a.x, dy = b.y - a.y;
+        if (Math.abs(dx) > maxShiftPx || Math.abs(dy) > maxShiftPx) continue;
+        hist[Math.round((dy + maxShiftPx) / binPx) * bins + Math.round((dx + maxShiftPx) / binPx)] += 1;
+        pairs.push([dx, dy]);
+      }
+    }
+    let best = -1, bi = 0, bj = 0;                               // peak of the histogram smoothed over 3 x 3 bins
+    for (let j = 1; j < bins - 1; j++) {
+      for (let i = 1; i < bins - 1; i++) {
+        let s = 0;
+        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) s += hist[(j + dj) * bins + (i + di)];
+        if (s > best) { best = s; bi = i; bj = j; }
+      }
+    }
+    if (best < minVotes) continue;
+    const cx = bi * binPx - maxShiftPx, cy = bj * binPx - maxShiftPx;
+    const near = pairs.filter(([dx, dy]) => Math.hypot(dx - cx, dy - cy) <= 0.6);
+    shifts[k] = { dx: median(near.map((p) => p[0])), dy: median(near.map((p) => p[1])), votes: near.length };
+  }
+  return shifts;
+}
+
+/**
+ * Find movers among dots already detected (see findMoversOnce for the result).
+ * First the images are registered on the field stars (registerShifts) and the dots corrected; then the
+ * search runs. Candidates carry `shifts[k]`: add it to a position of the corrected frame to get the
+ * pixel in image k (for drawing). `register: false` skips the registration.
+ */
+export function findMovers(frames, options = {}) {
+  const o = { ...DEFAULTS, ...options };
+  if (o.register === false || frames.length < 3) return findMoversOnce(frames, o);
+  const shifts = registerShifts(frames);
+  const used = shifts.map((s) => (Math.abs(s.dx) > 0.05 || Math.abs(s.dy) > 0.05 ? s : { ...s, dx: 0, dy: 0 }));
+  const corrected = frames.map((f, k) => ({ mjd: f.mjd, sources: f.sources.map((s) => ({ ...s, x: s.x - used[k].dx, y: s.y - used[k].dy })) }));
+  const result = findMoversOnce(corrected, o);
+  result.stats.shifts = used;
+  for (const c of result.candidates) c.shifts = used;
+  return result;
 }
 
 /** Detect dots in every image, then link them. frames: [{ mjd, grey }] in time order. */

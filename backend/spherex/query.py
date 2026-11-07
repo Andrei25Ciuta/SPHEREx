@@ -20,7 +20,7 @@ import numpy as np
 from astropy.io import fits
 from astropy.time import Time
 from astropy.utils.exceptions import AstropyWarning
-from astropy.wcs import WCS
+from astropy.wcs import WCS, NoConvergence
 from astropy.wcs.utils import proj_plane_pixel_scales
 
 # ------------------------------------------------------------------ CONFIG (ASSUMPTIONS)
@@ -58,6 +58,7 @@ class FrameFile:
     pixel_scale_arcsec: float
     image_hdu: int
     flags_hdu: int | None
+    bunit: str | None = None  # e.g. "MJy / sr" (real SPHEREx): lets photometry give Jansky
 
 
 def _first(header, keys):
@@ -141,12 +142,14 @@ def read_frame_file(path: Path) -> FrameFile:
 
         ny, nx = hdul[img_i].shape[-2:]
         scale = float(np.mean(proj_plane_pixel_scales(wcs)) * 3600)
+        bunit = _first(merged, ("BUNIT",))
+        bunit = str(bunit) if bunit is not None else None
 
     return FrameFile(path=path, mtime=path.stat().st_mtime, mjd=float(t.mjd),
                      date_iso=t.utc.isot[:19] + "Z", detector=det,
                      wave_min_um=float(wmin), wave_max_um=float(wmax), wcs=wcs,
                      shape=(ny, nx), pixel_scale_arcsec=scale,
-                     image_hdu=img_i, flags_hdu=flg_i)
+                     image_hdu=img_i, flags_hdu=flg_i, bunit=bunit)
 
 
 class LocalArchive:
@@ -185,7 +188,12 @@ class LocalArchive:
         for f in self._index.values():
             if detector != "all" and f.detector != detector:
                 continue
-            x, y = f.wcs.all_world2pix([[ra, dec]], 0)[0]
+            try:
+                x, y = f.wcs.all_world2pix([[ra, dec]], 0)[0]
+            except NoConvergence:
+                # The SIP distortion terms diverge far outside their image (a file of another field):
+                # the position is simply not on this frame. It must not break the query for the others.
+                continue
             if np.isfinite(x) and np.isfinite(y) and 0 <= x < f.shape[1] and 0 <= y < f.shape[0]:
                 hits.append(f)
         return sorted(hits, key=lambda f: f.mjd)

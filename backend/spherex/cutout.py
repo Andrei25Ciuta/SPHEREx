@@ -32,8 +32,42 @@ def target_wcs(ra: float, dec: float, fov_arcmin: float, pixel_scale_arcsec: flo
     return w, npix
 
 
-def cutout(frame: FrameFile, tgt: WCS, npix: int) -> tuple[np.ndarray, np.ndarray | None]:
-    """Return (image, flags) on the target grid. Pixels outside the frame are NaN / -1."""
+def _bilinear(data: np.ndarray, sx: np.ndarray, sy: np.ndarray) -> np.ndarray:
+    """Sample `data` at fractional pixel positions (0-based, pixel centres at integers).
+
+    NaN-aware: a neighbour that is NaN or outside the frame gets no weight and the rest are
+    re-normalised; no usable neighbour gives NaN. Keeps star positions to a small fraction of a
+    pixel, where nearest-neighbour sampling moves every star by up to +-0.5 px (random from frame
+    to frame, because each exposure is rotated differently) - enough to hide a slow mover.
+    """
+    ny, nx = data.shape
+    sx = np.where(np.isfinite(sx), sx, -10.0)
+    sy = np.where(np.isfinite(sy), sy, -10.0)
+    x0 = np.floor(sx).astype(np.int64)
+    y0 = np.floor(sy).astype(np.int64)
+    fx, fy = sx - x0, sy - y0
+    num = np.zeros(sx.shape)
+    den = np.zeros(sx.shape)
+    for dx, dy, w in ((0, 0, (1 - fx) * (1 - fy)), (1, 0, fx * (1 - fy)), (0, 1, (1 - fx) * fy), (1, 1, fx * fy)):
+        xi, yi = x0 + dx, y0 + dy
+        ok = (xi >= 0) & (xi < nx) & (yi >= 0) & (yi < ny)
+        vals = np.full(sx.shape, np.nan)
+        vals[ok] = data[yi[ok], xi[ok]]
+        good = ok & np.isfinite(vals)
+        num[good] += w[good] * vals[good]
+        den[good] += w[good]
+    out = np.full(sx.shape, np.nan, dtype=np.float32)
+    has = den > 1e-9
+    out[has] = (num[has] / den[has]).astype(np.float32)
+    return out
+
+
+def cutout(frame: FrameFile, tgt: WCS, npix: int, method: str = "bilinear") -> tuple[np.ndarray, np.ndarray | None]:
+    """Return (image, flags) on the target grid. Pixels outside the frame are NaN / -1.
+
+    method "bilinear" (default) keeps sub-pixel positions; "nearest" copies original pixel values
+    (flags are always copied, never interpolated).
+    """
     yy, xx = np.mgrid[0:npix, 0:npix]
     ra, dec = tgt.all_pix2world(xx.ravel(), yy.ravel(), 0)
     sx, sy = frame.wcs.all_world2pix(ra, dec, 0)
@@ -46,8 +80,12 @@ def cutout(frame: FrameFile, tgt: WCS, npix: int) -> tuple[np.ndarray, np.ndarra
         data = hdul[frame.image_hdu].data
         if data.ndim > 2:                                   # e.g. (1, ny, nx)
             data = data.reshape(data.shape[-2:])
-        img = np.full(npix * npix, np.nan, dtype=np.float32)
-        img[inside] = data[iy[inside], ix[inside]]
+        if method == "nearest":
+            img = np.full(npix * npix, np.nan, dtype=np.float32)
+            img[inside] = data[iy[inside], ix[inside]]
+        else:
+            img = _bilinear(np.asarray(data), sx, sy)
+            img[~inside] = np.nan                           # same coverage as nearest-neighbour
 
         flags = None
         if frame.flags_hdu is not None:

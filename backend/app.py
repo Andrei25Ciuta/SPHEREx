@@ -25,6 +25,7 @@ from fastapi.staticfiles import StaticFiles
 
 from spherex import cache, hips_proxy
 from spherex.cutout import cutout, flag_summary, target_wcs
+from spherex.floatdata import float_cutout_bytes
 from spherex.photometry import measure
 from spherex.query import LocalArchive
 from spherex.stretch import STRETCH_VERSION, flags_to_png, shared_stretch, to_png
@@ -74,7 +75,8 @@ def cutouts(
 
     base = str(request.base_url)            # e.g. "http://localhost:8001/"
     return {"frames": [{**f, "imageUrl": base + f["imageUrl"],
-                        "flagsUrl": base + f["flagsUrl"] if f.get("flagsUrl") else None}
+                        "flagsUrl": base + f["flagsUrl"] if f.get("flagsUrl") else None,
+                        "dataUrl": base + f["dataUrl"] if f.get("dataUrl") else None}
                        for f in result]}
 
 
@@ -84,9 +86,13 @@ def photometry(
     dec: float = Query(..., ge=-90, le=90),
     det: str = Query("all"),
     radius: float = Query(2.0, ge=0.5, le=6, description="aperture radius in pixels"),
+    epoch_mjd: float | None = Query(None, description="for a MOVING object: the date (MJD) at which it is at ra, dec"),
+    pm_east: float = Query(0.0, description="moving object: motion towards the east, arcsec/yr"),
+    pm_north: float = Query(0.0, description="moving object: motion towards the north, arcsec/yr"),
 ):
     frames = archive.find(ra, dec, det)
-    return {"points": measure(frames, ra, dec, radius)}
+    motion = None if epoch_mjd is None else {"epoch_mjd": epoch_mjd, "pm_east": pm_east, "pm_north": pm_north}
+    return {"points": measure(frames, ra, dec, radius, motion)}
 
 
 def _build(frames, ra, dec, fov, scale, key):
@@ -107,7 +113,7 @@ def _build(frames, ra, dec, fov, scale, key):
     out = []
     for det_items in by_det.values():
         stretched = shared_stretch([img for _, img, _ in det_items])
-        for (f, _, flags), arr8 in zip(det_items, stretched):
+        for (f, img, flags), arr8 in zip(det_items, stretched):
             i = len(out)
             mask_png = flags_to_png(flags)
             out.append({
@@ -117,6 +123,8 @@ def _build(frames, ra, dec, fov, scale, key):
                 "wavelengthMinUm": round(f.wave_min_um, 4),
                 "wavelengthMaxUm": round(f.wave_max_um, 4),
                 "imageUrl": cache.save_png(key, i, to_png(arr8)),
+                # the same pixels as real numbers (float32, background-subtracted, north up): for detection
+                "dataUrl": cache.save_bytes(key, i, float_cutout_bytes(img), "f32"),
                 "flags": flag_summary(flags),
                 "flagsUrl": cache.save_png(key, f"{i}_flags", mask_png) if mask_png else None,
                 "pixelScaleArcsec": round(scale, 4),

@@ -12,14 +12,19 @@
 //     flags: { anyFlagged: boolean, fractionFlagged: number } | null,
 //     // OPTIONAL (added for stretch features; old sources without them still work):
 //     flagsUrl?: string | null,  // transparent PNG, flagged pixels coloured, same size as image
+//     dataUrl?: string | null,   // the same pixels as REAL numbers: raw little-endian float32, n*n values, north up,
+//                                //   background-subtracted, NaN = no data (backend only; used by Find movers)
 //     pixelScaleArcsec?: number, // arcsec per image pixel (else derived from the FOV)
 //   }
 //
-//   getPhotometry({ centerRa, centerDec, fovArcmin, ra, dec, detector }) -> Promise<Point[]>
+//   getPhotometry({ centerRa, centerDec, fovArcmin, ra, dec, detector, radiusPx, motion }) -> Promise<Point[]>
 //   Point = { mjd, dateISO, detector, wavelengthUm, wavelengthMinUm, wavelengthMaxUm,
-//             flux: number|null, fluxErr: number|null, flagged: boolean }
+//             flux: number|null, fluxErr: number|null, flagged: boolean,
+//             fluxJy?: number|null, fluxJyErr?: number|null }       // Jy only when the file is in MJy/sr
 //   flux = background-subtracted aperture sum at (ra, dec), in IMAGE units (not calibrated).
 //   (centerRa/centerDec/fovArcmin = the current cutout query; only the mock needs them.)
+//   motion (optional) = { epochMjd, pmEast, pmNorth }: measure a MOVING object. It is at (ra, dec) on
+//   epochMjd and moves pmEast / pmNorth arcsec per year, so every frame is measured where it is on ITS date.
 //
 // detector = "all" returns every frame; the UI then groups them per detector.
 // The UI ONLY talks to this file, so swapping mock <-> real never touches the UI.

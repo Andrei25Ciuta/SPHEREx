@@ -92,6 +92,26 @@ def test_a_position_just_outside_every_frame_finds_nothing(write_frame, tmp_path
     assert LocalArchive(tmp_path).find(150.1, 20.0) == []                    # about 5.6 arcmin east of the centre
 
 
+def test_a_frame_whose_distortion_cannot_be_inverted_far_away_is_skipped(write_frame, tmp_path, monkeypatch):
+    """Real SIP polynomials diverge far outside their image and astropy raises NoConvergence (seen with 50 real
+    files of several fields: every /api/photometry call answered HTTP 500). That must mean "not on this frame"."""
+    from astropy.wcs import WCS, NoConvergence
+
+    write_frame(name="here.fits")
+    write_frame(ra=10.0, dec=-30.0, name="elsewhere.fits")
+    original = WCS.all_world2pix
+
+    def diverging(self, *args, **kwargs):
+        if abs(float(np.ravel(args[0])[0]) - float(self.wcs.crval[0])) > 5:      # far from this frame's own field
+            raise NoConvergence("the solution is diverging", best_solution=np.zeros((1, 2)))
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(WCS, "all_world2pix", diverging)
+    archive = LocalArchive(tmp_path)
+    assert [f.path.name for f in archive.find(150.0, 20.0)] == ["here.fits"]
+    assert [f.path.name for f in archive.find(10.0, -30.0)] == ["elsewhere.fits"]
+
+
 def test_a_bad_file_is_reported_but_does_not_break_the_archive(write_frame, tmp_path):
     write_frame(name="good.fits")
     (tmp_path / "corrupt.fits").write_text("this is not a FITS file")
