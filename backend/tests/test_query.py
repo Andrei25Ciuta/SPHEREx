@@ -37,6 +37,21 @@ def test_missing_wavelength_keywords_fall_back_to_the_nominal_band(write_frame):
     assert (frame.wave_min_um, frame.wave_max_um) == (2.42, 3.82)
 
 
+def test_a_file_without_wcs_wave_has_no_wavelength_from_wcs(write_frame):
+    from spherex.query import _wavelength_range_from_wcs
+    path, _ = write_frame()
+    with fits.open(path) as hdul:
+        assert _wavelength_range_from_wcs(hdul, 1) is None
+
+
+def test_the_band_from_wcs_wave_is_used_when_available(write_frame, monkeypatch):
+    from spherex import query
+    monkeypatch.setattr(query, "_wavelength_range_from_wcs", lambda hdul, i: (1.088, 1.113))
+    path, _ = write_frame(detector=2)
+    frame = read_frame_file(path)
+    assert (frame.wave_min_um, frame.wave_max_um) == (1.088, 1.113)              # not the nominal 1.10-1.62
+
+
 def test_a_file_without_a_time_keyword_is_rejected(write_frame):
     path, _ = write_frame(time_keyword=False)
     with pytest.raises(ValueError, match="no time keyword"):

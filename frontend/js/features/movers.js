@@ -83,19 +83,33 @@ function isLocalMax(img, n, x, y, v) {
   return true;
 }
 
-/** Brightness-weighted centre of the 5x5 pixels around a peak. Pixel i covers [i, i+1). */
+/**
+ * Centre of a star: brightness-weighted mean of the pixels around it, with a Gaussian window that is
+ * re-centred on the previous answer 6 times (the usual "windowed centroid"). Pixel i covers [i, i+1).
+ * A plain 5x5 box centred on the peak pixel was 0.8 px off for very bright stars, which saturate the
+ * 8-bit picture into a flat-topped blob with wide wings: enough to hide a mover on real data.
+ */
 function centroid(grey, n, px, py, background) {
-  let sw = 0, sx = 0, sy = 0;
-  for (let dy = -2; dy <= 2; dy++) {
-    for (let dx = -2; dx <= 2; dx++) {
-      const x = px + dx, y = py + dy;
-      if (x < 0 || y < 0 || x >= n || y >= n) continue;
-      const w = grey[y * n + x] - background;
-      if (w <= 0) continue;
-      sw += w; sx += w * (x + 0.5); sy += w * (y + 0.5);
+  const RADIUS = 3, SIGMA = 1.3;           // tight enough not to mix in a neighbouring star
+  let cx = px + 0.5, cy = py + 0.5;
+  for (let pass = 0; pass < 6; pass++) {
+    const ix = Math.floor(cx), iy = Math.floor(cy);
+    let sw = 0, sx = 0, sy = 0;
+    for (let dy = -RADIUS; dy <= RADIUS; dy++) {
+      for (let dx = -RADIUS; dx <= RADIUS; dx++) {
+        const x = ix + dx, y = iy + dy;
+        if (x < 0 || y < 0 || x >= n || y >= n) continue;
+        const w0 = grey[y * n + x] - background;
+        if (w0 <= 0) continue;
+        const ex = x + 0.5 - cx, ey = y + 0.5 - cy;
+        const w = w0 * Math.exp(-(ex * ex + ey * ey) / (2 * SIGMA * SIGMA));
+        sw += w; sx += w * (x + 0.5); sy += w * (y + 0.5);
+      }
     }
+    if (sw <= 0) return pass ? { x: cx, y: cy } : null;
+    cx = sx / sw; cy = sy / sw;
   }
-  return sw > 0 ? { x: sx / sw, y: sy / sw } : null;
+  return { x: cx, y: cy };
 }
 
 /**
@@ -357,7 +371,7 @@ export function matchKnownObject(c, geo, targets, { maxDistPx = 3 } = {}) {
   const year = mjdToYear(c.mjdRef);
   let best = null;
   for (const target of targets) {
-    if (target.type !== "mover") continue;
+    if (target.type && target.type !== "mover") continue;      // test objects have a type; catalogue objects have none
     const p = positionAtEpoch(target, year);
     const { fx, fy } = skyToCanvas(p.ra, p.dec, geo);
     const distPx = Math.hypot(fx * geo.n - c.x, fy * geo.n - c.y);

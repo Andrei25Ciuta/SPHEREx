@@ -13,6 +13,8 @@ import io
 import numpy as np
 from PIL import Image
 
+from .flags import bad_mask
+
 STRETCH_VERSION = 2      # bump when the algorithm/output changes -> invalidates the PNG cache
 LOW_PCT, HIGH_PCT = 1.0, 99.7
 ASINH_A = 0.1            # smaller = stronger boost of faint stuff
@@ -51,10 +53,12 @@ def to_png(arr8: np.ndarray) -> bytes:
 
 def flags_to_png(flags: np.ndarray | None) -> bytes | None:
     """Transparent RGBA PNG, flagged pixels red. None if nothing is flagged."""
-    if flags is None or not np.any(flags > 0):
+    if flags is None:
+        return None
+    on = bad_mask(flags)                       # only BAD bits (spherex/flags.py), not "any bit"
+    if not on.any():
         return None
     rgba = np.zeros(flags.shape + (4,), dtype=np.uint8)
-    on = flags > 0
     rgba[on] = (255, 40, 60, 255)
     buf = io.BytesIO()
     Image.fromarray(np.ascontiguousarray(np.flipud(rgba))).save(buf, format="PNG", optimize=True)

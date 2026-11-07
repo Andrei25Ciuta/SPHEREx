@@ -140,6 +140,16 @@ Rulat cu `backend/scripts/fetch_real_sample.py` (vezi `REAL_DATA_TEST.md`), de p
 - Un detector are deci **~35–95 de imagini** în jurul unui obiect obișnuit (nu 6), iar în câmpul adânc sute (R Dra: 565–584 pe detector).
 - **Încă nedescărcat și neverificat:** orice despre conținutul fișierelor (mărime, cuvinte-cheie, WCS, WCS-WAVE, flag-uri). Asta face Pasul B din `REAL_DATA_TEST.md`.
 
+## 8c. Verificat pe fișiere REALE (7 nov 2026: 4 cutout-uri ale lui Barnard's Star, detector D2, aug. 2025 → sept. 2026)
+
+- **Cutout de 5′:** 4–5 MB, 9–15 s fiecare; 49×49 px (sau tăiat la marginea detectorului: 37×49, deci **ne-pătrat**, ca în documentație). HDU: PRIMARY, IMAGE, FLAGS, VARIANCE, ZODI, PSF (numit EPSF în cele mai noi), WCS-WAVE.
+- **Timp:** `MJD-OBS`, `MJD-AVG`, `MJD-BEG`, `DATE-OBS`, `DATE-AVG` etc. sunt în header, deci `query.py` îl citea corect de la început. **`DATE` e data creării fișierului** (ex. 2025-09-24 pentru o observație din 2025-08-21): nu se folosește. Timpul din TAP (`time_bounds_lower`) coincide cu `MJD-OBS`.
+- **Scara:** 6,14″/px; WCS `TAN-SIP` (distorsiune SIP; astropy afișează un INFO inofensiv despre sufixul `-SIP`).
+- **Steaguri:** **bitul 21 e setat pe TOȚI pixelii**, deci „orice bit ≠ 0" ar marca 100 % din imagine. Corectat în `backend/spherex/flags.py` (doar biții „răi"; rămân 4–7 % pixeli marcați). Biți observați: 0, 1, 2, 6, 11, 17, 21, 26, 28 (26 și 28 nu apar în tabelul de mai sus).
+- **Lungimea de undă:** `WCS-WAVE` merge cu rețeta din tutorial, iar **fiecare imagine are banda ei, chiar pe același detector D2**: 1,088–1,114; 1,497–1,535; 1,639–1,678; 1,493–1,530 µm. Într-un cutout de 5′ centrul și ținta diferă cu ~0,002 µm. Banda „nominală" 1,10–1,62 µm a mock-ului ar fi făcut graficul de spectru inutil; `query.py` citește acum banda din WCS-WAVE.
+- **Mișcarea (validare cap-coadă):** din cele 4 imagini, mișcarea proprie a lui Barnard's Star măsurată cu centroid e **−1,9 / +11,2 ″/an** (RA·cos δ / Dec), față de **−0,8 / +10,4** în catalog; steaua stă la 1,6–3,6″ (0,26–0,58 px) de poziția din catalog în toate cele 4 epoci, fără decalaj sistematic. Timpul, WCS-ul și orientarea (nu e oglindită) sunt corecte.
+- **Find movers pe aceste date** (4 imagini, prin backend): găsește Barnard's Star și îl etichetează „(known)", dar viteza iese 18,7″/an (catalog 10,4): cu 4 imagini, 1 px de zgomot de poziție (resamplare nearest-neighbour + PNG pe 8 biți) și doar ~1 an de bază, panta e slab determinată. Identificarea e corectă, valoarea numerică nu e încă bună.
+
 ## 9. Încă neclar / de verificat
 
 - Cuvântul-cheie exact pentru **timpul observației** în header (`DATE` = observație sau creare?).

@@ -15,13 +15,16 @@ dates, flipped like a mini-video ("blinking"). Stars stay still; things that **m
 | **Difference** | Each image minus the median of images from *other* survey passes: still stars vanish, orange = "it is here now", blue = "it was here before / faded". |
 | **Stack** | Average of all dates: deeper, less noisy picture. |
 | **Trail** | Brightest value of each pixel over all dates: a mover leaves a **trail of dots**. |
-| **Find movers** | One button: finds the dots in every image, links them across survey passes and lists the ones that **moved**, best first (speed in ″/yr, direction, position, how many images, significance). Click one to see its path on the blink; objects from the test list are labelled "(known)"; **Check in sky map** opens the map on it. Details and limits: see below. |
+| **Compare** | You pick **image A** and **image B** (single images, or a whole survey pass averaged) and an operation: **A − B** (orange = brighter in A, blue = fainter in A: a mover is an orange dot next to a blue one, still stars vanish) or **A + B** (average, a deeper picture). Starts at "latest pass − earliest pass". Note: other dates are also other wavelengths, so bright stars can leave a faint leftover. |
+| **Find movers** | One button: finds the dots in every image, links them across survey passes and lists the ones that **moved**, best first (speed in ″/yr, direction, position, how many images, significance). Click one to see its path on the blink; objects from the test list (and SIMBAD objects, with real data) are labelled "(known)"; **Check in sky map** opens the map on it. Details and limits: see below. |
 | **Predicted position** | For the test objects, cream ticks show where the catalogue (SIMBAD position + proper motion) says the object must be on each frame's date, plus how far it moves in pixels. If the object sits on the ticks, the whole chain (archive → cutout → orientation → timing) is right. |
+| **Catalogue stars** (real data) | Tick "Catalogue stars (SIMBAD)": the catalogued objects of the field are drawn as small teal rings, **moved to the date of each image** with their catalogue proper motion; those moving more than 1″/yr also get their name and path. SIMBAD positions are for the year 2000, so fast movers are searched in a wider circle (Barnard's Star is 4.5′ from its year-2000 spot). The same list lets **Find movers** say "(known)" for any SIMBAD object, not only the 5 test objects. Off with synthetic data (invented stars would not match SIMBAD). |
 | **All detectors** | One averaged thumbnail per detector (D1–D6, 0.75–5 µm); click to blink it. |
 | **Measure** | Click a source → its **spectrum** (brightness vs wavelength, per survey pass) and **light curve** (brightness vs date, per detector), plus a table. |
-| **Flags** | Show flagged pixels in red; optionally skip frames with > 1 % flagged pixels. |
+| **Flags** | Show flagged pixels in red (a legend says what the red means: bad pixels, not "known source"); optionally skip frames with > 1 % flagged pixels. |
 | **Sky context** | Aladin Lite map of 2MASS / AllWISE / DSS2 with SIMBAD objects and the blink field outlined. Old surveys show where a fast mover *was* decades ago. A **Full screen** button gives the map the whole screen (Esc leaves it). |
 | **Share** | Save the current image (PNG), record the blink as a video (WebM), copy a link that restores the exact view (`?ra=&dec=&fov=&det=&mode=`). |
+| **Embed** | "Embed code" copies an `<iframe>` snippet for another web page. `?embed=1` shows only the workspace (no banner, About or footer) and keeps a one-line note saying what the data is. |
 | **Test objects** | Barnard's Star, Epsilon Indi B, WISE 0855, RW Aurigae, R Draconis – SIMBAD positions propagated with proper motion to the SPHEREx era. |
 
 Accessible: keyboard shortcuts, ARIA labels/live regions, visible focus, reduced-motion
@@ -80,6 +83,7 @@ backend/.venv/Scripts/python.exe backend/scripts/make_test_fits.py
 
 Real files go in `backend/data/real/` (any `*.fits` under `backend/data/` is indexed).
 To fetch a first real SPHEREx cutout from IRSA (search first, download only after a `[y/N]` question, report saved for pasting), follow **[docs/REAL_DATA_TEST.md](docs/REAL_DATA_TEST.md)**: `backend/scripts/fetch_real_sample.py`.
+Real files in `backend/data/real/` are served by the backend: open the frontend with **`?data=api`** (add `&api=http://localhost:PORT` if the backend is not on 8001; restart the backend after code changes), e.g. `/?data=api&ra=269.4462&dec=4.769&fov=3&det=D2` after downloading Barnard's Star.
 Inspect a new file first and tick off [docs/DATA_CHECKLIST.md](docs/DATA_CHECKLIST.md):
 
 ```bash
@@ -120,6 +124,8 @@ node scratch/test_coords.mjs
 node scratch/test_mock.mjs
 node scratch/test_measure.mjs
 node scratch/test_movers.mjs
+node scratch/test_compare.mjs
+node scratch/test_catalogue.mjs
 ```
 
 Backend (pytest; synthetic FITS files made on the fly, no real data and no network needed):
@@ -141,7 +147,7 @@ frontend/            static site, no build step (ES modules)
   js/main.js         wires UI ↔ modules
   js/player.js       blink player + difference / stack / trail maths
   js/data/           getCutouts.js (THE interface), mockSource.js, apiSource.js
-  js/features/       movers.js (Find movers), measure.js (spectrum + light curve),
+  js/features/       movers.js (Find movers), compare.js (Compare A − B), catalogue.js (SIMBAD overlay), measure.js (spectrum + light curve),
                      skyContext.js (Aladin), fullscreen.js, exporters.js
 backend/             FastAPI + astropy
   spherex/           query.py, cutout.py, stretch.py, photometry.py, cache.py, hips_proxy.py

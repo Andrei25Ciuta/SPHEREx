@@ -11,6 +11,7 @@ from __future__ import annotations
 import numpy as np
 
 from .cutout import cutout, target_wcs
+from .flags import bad_mask
 from .query import FrameFile
 
 
@@ -38,7 +39,7 @@ def measure(frames: list[FrameFile], ra: float, dec: float, radius_px: float = 2
         img, flags = cutout(f, tgt, npix)
         res = aperture(img, npix / 2, npix / 2, radius_px)   # target is exactly in the centre
         c = npix // 2
-        flagged = bool(flags is not None and np.any(flags[c - 2:c + 3, c - 2:c + 3] > 0))
+        flagged = bool(flags is not None and np.any(bad_mask(flags[c - 2:c + 3, c - 2:c + 3])))
         points.append({
             "mjd": round(f.mjd, 6),
             "dateISO": f.date_iso,

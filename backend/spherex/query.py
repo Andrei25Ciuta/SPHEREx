@@ -84,6 +84,30 @@ def normalize_detector(value) -> str | None:
     return f"D{int(m.group(1))}" if m else str(value)
 
 
+def _wavelength_range_from_wcs(hdul, img_i) -> tuple[float, float] | None:
+    """Wavelength band (um) at the image CENTRE, from the WCS-WAVE extension of real SPHEREx files.
+
+    SPHEREx's filters are linear variable filters: the wavelength changes across the detector and
+    from one exposure to the next, so every frame has its own band (seen on real cutouts of one
+    detector: 1.10, 1.52, 1.66 um). Recipe from IRSA's tutorial: WCS(header, fobj=hdul, key="W"),
+    sip = None, pixel_to_world(x, y) -> (wavelength, bandwidth). A 5-arcmin cutout is tiny next
+    to the detector, so its centre is representative. None = no such WCS (fake files, other layouts).
+    """
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", AstropyWarning)
+            w = WCS(header=hdul[img_i].header, fobj=hdul, key="W")
+            w.sip = None
+            ny, nx = hdul[img_i].shape[-2:]
+            wavelength, bandwidth = w.pixel_to_world(nx / 2, ny / 2)
+        centre, width = float(wavelength.to_value("um")), float(bandwidth.to_value("um"))
+    except Exception:  # noqa: BLE001 - any problem means "not available"; the caller has a fallback
+        return None
+    if not (0.5 < centre < 6.0 and 0 < width < 1.0):
+        return None
+    return centre - width / 2, centre + width / 2
+
+
 def read_frame_file(path: Path) -> FrameFile:
     """Read only the headers (data is memory-mapped, not loaded)."""
     with fits.open(path, memmap=True) as hdul:
@@ -111,7 +135,9 @@ def read_frame_file(path: Path) -> FrameFile:
         det = normalize_detector(_first(merged, DETECTOR_KEYS)) or "D?"
         wmin, wmax = _first(merged, WAVEMIN_KEYS), _first(merged, WAVEMAX_KEYS)
         if wmin is None or wmax is None:
-            wmin, wmax = NOMINAL_WAVE_UM.get(det, (float("nan"), float("nan")))
+            # Real SPHEREx files: per-frame band from WCS-WAVE; otherwise the rough nominal band.
+            from_wcs = _wavelength_range_from_wcs(hdul, img_i)
+            wmin, wmax = from_wcs or NOMINAL_WAVE_UM.get(det, (float("nan"), float("nan")))
 
         ny, nx = hdul[img_i].shape[-2:]
         scale = float(np.mean(proj_plane_pixel_scales(wcs)) * 3600)

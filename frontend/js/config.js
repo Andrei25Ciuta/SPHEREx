@@ -2,11 +2,16 @@
 //
 //   "mock" -> synthetic star fields generated in the browser (js/data/mockSource.js)
 //   "api"  -> our own Python backend (backend/app.py, step 7) via js/data/apiSource.js
-export const DATA_SOURCE = "mock";
+//
+// Without editing this file: add  ?data=api  to the page address to use the backend
+// (and  &api=http://localhost:8002  if it runs on another port; only localhost is accepted).
+const params = new URLSearchParams(typeof location === "undefined" ? "" : location.search);   // Node tests have no location
+export const DATA_SOURCE = params.get("data") === "api" ? "api" : "mock";
 
 // Base URL of our backend (used when DATA_SOURCE === "api", and by the sky map's tile proxy).
 // Empty string = same origin as the page (e.g. FastAPI also serves the frontend).
-export const API_BASE = "http://localhost:8001";
+const apiParam = params.get("api") || "";
+export const API_BASE = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(apiParam) ? apiParam : "http://localhost:8001";
 
 // Where the sky map (Aladin) gets its survey pictures:
 //   "auto"    -> the first of these that answers within 2.5 s: "esa", then "backend", then "cds"

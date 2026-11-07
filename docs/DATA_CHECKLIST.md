@@ -69,9 +69,9 @@ file says otherwise, change the CONFIG block in `backend/spherex/query.py` (one 
 - [x] Lungime de undă per pixel: WCS-WAVE (grilă 11×11), `WCS(header, fobj=hdul, key="W")`, `sip=None`, `pixel_to_world`.
 - [x] Definiția biților de flag (lista în IRSA_FACTS.md). **Rezultat: „orice bit ≠ 0” e greșit**; biții 12 și 21 sunt informativi.
 - [x] Metoda de acces: TAP (`spherex.plane`, `spherex.artifact`) + cutout `?center=ra,dec&size=...`; SIA2 cu colecții `spherex_qr2` / `spherex_qr3`.
-- [ ] Cuvântul-cheie al timpului observației (`DATE` = observație sau creare?). Alternativa: `time_bounds_lower` din TAP.
+- [x] **Răspuns 7 nov: `MJD-OBS` (sau `MJD-AVG`); `DATE` e data creării fișierului, nu a observației.** Cuvântul-cheie al timpului observației (`DATE` = observație sau creare?). Alternativa: `time_bounds_lower` din TAP.
 - [ ] Dimensiunea maximă a cutout-ului și limitele de rată.
 - [ ] Termenii de utilizare / citarea datelor SPHEREx.
-- [ ] Scara pixelilor din WCS pe un fișier real (documentația sugerează ~6,15″).
+- [x] **6,14″/px pe fișiere reale (7 nov).** Scara pixelilor din WCS pe un fișier real (documentația sugerează ~6,15″).
 - [x] Care din cele 5 obiecte test au cel puțin 2 epoci pe același detector (interogare TAP). **Toate**: ≥ 3 treceri pe aproape orice detector (R Draconis: D3 și D6 doar 2). Tabel în `IRSA_FACTS.md` §8b.
-- [ ] **Test cu fișiere reale** (cutout-uri): ghid și script în `docs/REAL_DATA_TEST.md`. Pasul A (căutare) făcut 7 nov; Pașii B și C (descărcare + inspecție) de rulat de utilizator.
+- [x] **Test cu fișiere reale** (cutout-uri; FĂCUT 7 nov, rezultate în `IRSA_FACTS.md` §8c; steagurile și lungimea de undă corectate în backend): ghid și script în `docs/REAL_DATA_TEST.md`. Pasul A (căutare) făcut 7 nov; Pașii B și C (descărcare + inspecție) de rulat de utilizator.

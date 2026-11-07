@@ -10,6 +10,8 @@
 //   "mean"  – average of all images: a deeper, less noisy single picture
 //   "max"   – brightest value of each pixel over all images: a moving object
 //             leaves a TRAIL of dots, a static star stays one dot
+//   "compare" – YOUR choice: image A minus (or plus) image B, where A and B are single images or
+//             whole survey passes (features/compare.js). Set with player.setCompare({ a, b, op }).
 //
 // Usage:
 //   const player = new BlinkPlayer(canvas, { onFrameChange, onPlayStateChange });
@@ -17,7 +19,9 @@
 //   player.setMode("diff"); player.play(); player.goTo(3); player.setFps(4);
 //   player.setTracks([{ label, points: [{ fx, fy }, ...] }]);  // predicted positions, one per frame
 
-export const MODES = ["blink", "diff", "mean", "max"];
+import { combine } from "./features/compare.js";
+
+export const MODES = ["blink", "diff", "mean", "max", "compare"];
 const ANIMATED = new Set(["blink", "diff"]);       // modes that step through time
 
 export class BlinkPlayer {
@@ -40,6 +44,8 @@ export class BlinkPlayer {
     this.showTracks = true;
     this.candidates = [];   // movers found by "Find movers": [{ label, points: [{ fx, fy }] }], one point per frame
     this.selectedCandidate = -1;
+    this.compare = null;    // { a: [frame indices], b: [frame indices], op: "sub" | "add" } for the "compare" mode
+    this.catalogue = [];    // catalogue objects: [{ label, pm, moving, points: [{ fx, fy }] }], one point per frame
     this.lastTick = 0;
     this.rafId = null;
 
@@ -61,6 +67,8 @@ export class BlinkPlayer {
     this.flagImages = [];
     this._grey = null;
     this._derived = {};
+    this.compare = null;                            // frame indices of the old frames: invalid now
+    this.catalogue = [];                            // points are per frame of the old frames
     this.candidates = [];                           // they belong to the old frames
     this.selectedCandidate = -1;
     let done = 0;
@@ -103,6 +111,10 @@ export class BlinkPlayer {
   }
   /** Grey pixels (0..255) of every frame, or null if the browser will not let us read them. */
   greyFrames() { return this._greys(); }
+  /** What the "compare" mode shows: a, b = frame indices (averaged if several), op = "sub" (A − B) or "add" (A + B). */
+  setCompare(compare) { this.compare = compare; this.draw(); }
+  /** Catalogue objects at each frame's date (features/catalogue.js): small rings, names + paths for the moving ones. */
+  setCatalogue(catalogue) { this.catalogue = catalogue || []; this.draw(); }
 
   /** Show frame i (wraps around, so goTo(-1) = last frame). */
   goTo(i) {
@@ -138,6 +150,7 @@ export class BlinkPlayer {
     }
 
     if (this.showTracks && this.tracks.length) this._drawTracks();
+    if (this.catalogue.length) this._drawCatalogue();
     if (this.candidates.length) this._drawCandidates();
     if (this.marker) this._drawMarker();
   }
@@ -268,6 +281,10 @@ export class BlinkPlayer {
         else { rgba[4 * i] = a * 0.25; rgba[4 * i + 1] = a * 0.62; rgba[4 * i + 2] = a; }
         rgba[4 * i + 3] = 255;
       }
+    } else if (this.mode === "compare") {
+      const c = this.compare;
+      if (!c || !c.a.length || !c.b.length) return null;
+      return combine(this._stat("mean", c.a), this._stat("mean", c.b), c.op);
     } else {
       const s = this._stat(this.mode === "mean" ? "mean" : "max");
       for (let i = 0; i < len; i++) {
@@ -366,6 +383,42 @@ export class BlinkPlayer {
       const lx = x + 16 + tw > W - 4 ? x - 16 - tw : x + 16;
       ctx.fillText(c.label, lx, Math.max(14, y - 14));
     });
+    ctx.restore();
+  }
+
+  /**
+   * Catalogue objects at the date on screen: a small teal ring each. The ones that move
+   * (flagged `moving`) also get their name and the path the catalogue says they follow over the dates.
+   * Teal: different from the cream "predicted" tracks of the test objects and the orange candidates.
+   */
+  _drawCatalogue() {
+    const { ctx, canvas } = this;
+    const W = canvas.width, H = canvas.height;
+    ctx.save();
+    ctx.shadowColor = "#000"; ctx.shadowBlur = 3;
+    ctx.strokeStyle = ctx.fillStyle = "#90AEAD";
+    ctx.font = "600 12px Inter, system-ui, sans-serif";
+    for (const o of this.catalogue) {
+      const pts = o.points.map((p) => [p.fx * W, p.fy * H]);
+      if (!pts.length) continue;
+      if (o.moving) {
+        ctx.globalAlpha = 0.6; ctx.lineWidth = 1.2; ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        pts.forEach(([px, py], k) => (k ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      const [x, y] = this.isAnimated ? (pts[this.index] ?? pts[0]) : pts.at(-1);
+      if (x < -8 || x > W + 8 || y < -8 || y > H + 8) continue;
+      ctx.globalAlpha = 0.95; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(x, y, 6, 0, 2 * Math.PI); ctx.stroke();
+      if (o.moving) {
+        const text = `${o.label} · ${o.pm.toFixed(1)}″/yr`;
+        const tw = ctx.measureText(text).width;
+        const lx = x + 10 + tw > W - 4 ? x - 10 - tw : x + 10;
+        ctx.fillText(text, Math.max(4, lx), Math.min(H - 6, Math.max(14, y + 18)));
+      }
+    }
     ctx.restore();
   }
 

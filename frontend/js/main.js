@@ -17,6 +17,8 @@ import { canvasToSky, measureAndPlot, clearMeasurement, APERTURE_RADIUS_PX } fro
 import { SkyContext } from "./features/skyContext.js";
 import { setupFullscreen } from "./features/fullscreen.js";
 import { findMoversInImages, describeMover, matchKnownObject, moverPositionAtMjd, passIndices } from "./features/movers.js";
+import { compareChoices, membersFor, defaultChoice, shortLabel, OPERATIONS } from "./features/compare.js";
+import { fetchCatalogue, catalogueTracks } from "./features/catalogue.js";
 import { savePng, recordBlink, canRecord, copyLink } from "./features/exporters.js";
 
 // Small helper: document.getElementById is long, so we alias it.
@@ -257,6 +259,19 @@ function updateFrameInfo(i, frame) {
       : frame.flags.anyFlagged ? `⚠ ${(frame.flags.fractionFlagged * 100).toFixed(1)} % px` : "Clean";
     canvas.setAttribute("aria-label",
       `SPHEREx ${frame.detector} ${player.mode === "diff" ? "difference image" : "image"} taken ${frame.dateISO.slice(0, 10)}, frame ${i + 1} of ${player.length}`);
+  } else if (player.mode === "compare" && compareState) {
+    // Compare: A − B or A + B of the images / passes you picked.
+    const { a, b, op } = compareState;
+    const used = [...new Set([...compareMembers(a), ...compareMembers(b)])].map((k) => player.frames[k]);
+    const sign = op === "sub" ? "−" : "+";
+    $("frame-counter").textContent = OPERATIONS[op];
+    $("frame-date").textContent = `${shortLabel(a, player.frames)} ${sign} ${shortLabel(b, player.frames)}`;
+    $("meta-wl").textContent = `${Math.min(...used.map((f) => f.wavelengthMinUm)).toFixed(2)}–${Math.max(...used.map((f) => f.wavelengthMaxUm)).toFixed(2)} µm`;
+    const flagged = used.filter((f) => f.flags?.anyFlagged).length;
+    $("meta-flags").textContent = flagged ? `⚠ ${flagged} of ${used.length} images` : "Clean";
+    $("meta-mjd").textContent = `${Math.min(...used.map((f) => f.mjd)).toFixed(1)}–${Math.max(...used.map((f) => f.mjd)).toFixed(1)}`;
+    canvas.setAttribute("aria-label",
+      `SPHEREx ${frame.detector} ${op === "sub" ? "difference" : "sum"} image: ${shortLabel(a, player.frames)} ${sign} ${shortLabel(b, player.frames)}`);
   } else {
     // Stack / trail: one image made from all frames.
     const f0 = player.frames[0], f1 = player.frames.at(-1);
@@ -321,6 +336,7 @@ const MODE_HELP = {
   diff: 'Each image minus the median of the images from <em>other</em> dates: still stars vanish. <span class="swatch" style="background:#ff9e33"></span> brighter than usual – the object is here now · <span class="swatch" style="background:#409eff"></span> fainter than usual.',
   mean: "Average of all images: deeper and less noisy. Moving objects get smeared or fade out.",
   max: "Brightest value of every pixel over all dates: a moving object leaves a <strong>trail of dots</strong>, a still star stays one dot.",
+  compare: 'Pick two images, or whole survey passes. <strong>A − B</strong>: <span class="swatch" style="background:#ff9e33"></span> brighter in A · <span class="swatch" style="background:#409eff"></span> fainter in A – a mover is an orange dot next to a blue one, still stars vanish. <strong>A + B</strong>: the average of both, a deeper picture. Other dates are also other wavelengths, so bright stars can leave a faint leftover even if they did not move.',
 };
 
 function setMode(mode, { updateUrl = true } = {}) {
@@ -330,6 +346,7 @@ function setMode(mode, { updateUrl = true } = {}) {
   document.querySelector(`#mode-switch input[value="${mode}"]`).checked = true;
   player.setMode(mode);
   $("mode-help").innerHTML = MODE_HELP[mode];
+  $("compare-controls").hidden = mode !== "compare";
   if (updateUrl) writeUrlState({ mode: mode === "blink" ? null : mode });
   if (player.length) {
     setPlayerEnabled(true);
@@ -341,9 +358,52 @@ document.querySelectorAll('#mode-switch input').forEach((r) =>
   r.addEventListener("change", () => setMode(r.value)));
 
 // ---------------------------------------------------------------
+// Compare mode: A − B / A + B of images or survey passes you pick (features/compare.js)
+// ---------------------------------------------------------------
+let compareState = null;           // { choices, a, b, op } for the frames on screen
+
+const compareMembers = (value) => (compareState ? membersFor(value, compareState.choices) : []);
+
+/** Fill the A and B menus from the frames on screen; start with "latest pass − earliest pass". */
+function setupCompare() {
+  const choices = compareChoices(player.frames);
+  const start = defaultChoice(choices);
+  const fill = (select, value) => {
+    const group = (label, items) => {
+      const g = document.createElement("optgroup");
+      g.label = label;
+      g.append(...items.map((c) => new Option(c.label, c.value)));
+      return g;
+    };
+    select.replaceChildren();
+    if (choices.passes.length > 1) select.append(group("Survey passes (average of their images)", choices.passes));
+    select.append(group("Single images", choices.singles));
+    select.value = value;
+  };
+  fill($("cmp-a"), start.a);
+  fill($("cmp-b"), start.b);
+  compareState = { choices, a: start.a, b: start.b, op: $("cmp-op").value };
+  applyCompare();
+}
+
+/** Read the three menus, tell the player, refresh the info line. */
+function applyCompare() {
+  if (!compareState) return;
+  compareState.a = $("cmp-a").value;
+  compareState.b = $("cmp-b").value;
+  compareState.op = $("cmp-op").value;
+  player.setCompare({ a: compareMembers(compareState.a), b: compareMembers(compareState.b), op: compareState.op });
+  if (player.mode === "compare" && player.length) updateFrameInfo(player.index, player.frames[player.index]);
+}
+["cmp-a", "cmp-b", "cmp-op"].forEach((id) => $(id).addEventListener("change", applyCompare));
+
+// ---------------------------------------------------------------
 // Flags
 // ---------------------------------------------------------------
-$("show-flags").addEventListener("change", (e) => player.setShowFlags(e.target.checked));
+$("show-flags").addEventListener("change", (e) => {
+  player.setShowFlags(e.target.checked);
+  $("flags-legend").hidden = !e.target.checked;          // say what the red means
+});
 $("skip-flagged").addEventListener("change", () => { if (currentDetector) selectDetector(currentDetector); });
 
 /** Frames of one detector, without the badly flagged ones if the user asked so. */
@@ -405,6 +465,7 @@ async function showDetector(detector) {
   currentFrames = frames;
   player.setTracks([]);                  // old track has the wrong number of points
   clearMovers();                         // so do the movers found in the old frames
+  compareState = null;                   // and the A / B choices of the Compare mode
   player.pause();
   setPlayerEnabled(false);
   markOverview(detector);
@@ -422,10 +483,12 @@ async function showDetector(detector) {
   });
   if (token !== loadToken) return;
 
+  setupCompare();
   frameSlider.max = String(currentFrames.length - 1);
   hideOverlay();
   setPlayerEnabled(true);
   updateTracks();
+  updateCatalogue();                     // SIMBAD objects at these images' dates, if the box is ticked
   // Re-apply the mode: it may need ≥ 2 frames, and the info line depends on it.
   setMode(player.mode, { updateUrl: false });
   $("movers-status").textContent = moversHint();
@@ -534,12 +597,71 @@ $("aladin-btn").addEventListener("click", async () => {
 $("survey-select").addEventListener("change", (e) => sky.setSurvey(e.target.value));
 
 // ---------------------------------------------------------------
+// Catalogue (SIMBAD): overlay on the blink image, and the "known object" check of Find movers
+// (features/catalogue.js). Only with real data: the synthetic sky has no real objects to match.
+// ---------------------------------------------------------------
+let catalogueCache = null;         // { key, objects } for the field on screen (successful answers only)
+let catalogueError = "";
+
+const catalogueKey = () => `${currentQuery.ra.toFixed(4)},${currentQuery.dec.toFixed(4)},${currentQuery.fov}`;
+
+/** SIMBAD objects for the field on screen, or null (synthetic data, offline, SIMBAD error). Never throws. */
+async function ensureCatalogue() {
+  if (DATA_SOURCE !== "api" || !currentQuery) return null;
+  const key = catalogueKey();
+  if (catalogueCache?.key === key) return catalogueCache.objects;
+  try {
+    const objects = await fetchCatalogue(currentQuery.ra, currentQuery.dec, currentQuery.fov);
+    if (!currentQuery || key !== catalogueKey()) return null;        // another field was loaded meanwhile
+    catalogueError = "";
+    catalogueCache = { key, objects };
+    return objects;
+  } catch (err) {
+    console.warn(err);
+    catalogueError = err.message;
+    return null;
+  }
+}
+
+/** Draw (or clear) the catalogue overlay for the frames on screen. */
+async function updateCatalogue() {
+  const box = $("show-catalogue"), info = $("catalogue-info");
+  if (!box.checked || !currentQuery || !currentFrames.length || !player.naturalSize) {
+    player.setCatalogue([]);
+    if (!box.checked) info.textContent = "";
+    return;
+  }
+  const token = loadToken;
+  info.textContent = "Asking SIMBAD…";
+  const objects = await ensureCatalogue();
+  if (token !== loadToken || !box.checked) return;
+  if (!objects) {
+    player.setCatalogue([]);
+    info.textContent = `Could not get the SIMBAD objects${catalogueError ? ` (${catalogueError})` : ""}.`;
+    return;
+  }
+  const n = player.naturalSize;
+  const geo = { ra: currentQuery.ra, dec: currentQuery.dec, n, scaleArcsec: currentFrames[0].pixelScaleArcsec ?? (currentQuery.fov * 60) / n };
+  // The test objects already have their own cream "predicted" tracks: do not draw them twice.
+  const isTestObject = (o) => TARGETS.some((t) => Math.hypot((t.ra - o.ra) * Math.cos((o.dec * Math.PI) / 180), t.dec - o.dec) * 3600 < 1);
+  const tracks = catalogueTracks(objects.filter((o) => !isTestObject(o)), currentFrames, geo);
+  player.setCatalogue(tracks);
+  const moving = tracks.filter((t) => t.moving).length;
+  info.textContent = tracks.length
+    ? `SIMBAD: ${tracks.length} object${tracks.length === 1 ? "" : "s"} in this field${moving ? `, ${moving} moving more than 1″/yr (with name and path)` : ""}. ` +
+      "Each is moved to the date of the image with its catalogue proper motion."
+    : "SIMBAD lists no other object in this field (faint infrared stars are often missing from it).";
+}
+$("show-catalogue").addEventListener("change", updateCatalogue);
+
+// ---------------------------------------------------------------
 // Find movers: which dots changed position between the dates? (features/movers.js)
 // ---------------------------------------------------------------
 const MOVERS_HINT = "Compares the dots in all images and lists the ones that moved.";
 const MIN_PASSES = 3;                      // same rule as in movers.js: a third pass proves a line
 let movers = [];                           // candidates for the detector on screen, best first
 let selectedMover = -1;
+let moversCatalogueChecked = false;        // was SIMBAD consulted for the list on screen?
 
 const countPasses = (frames) => (frames.length ? passIndices(frames.map((f) => f.mjd)).at(-1) + 1 : 0);
 const canFindMovers = () => player.length >= 3 && countPasses(player.frames) >= MIN_PASSES;
@@ -581,7 +703,11 @@ $("find-movers-btn").addEventListener("click", async () => {
       return;
     }
     const result = findMoversInImages(player.frames.map((f, i) => ({ mjd: f.mjd, grey: greys[i] })), player.naturalSize);
-    showMovers(result);
+    // Known objects: the test list always, and real SIMBAD objects too when we have real data.
+    if (DATA_SOURCE === "api") status.textContent = "Checking SIMBAD for known objects…";
+    const objects = await ensureCatalogue();
+    if (token !== loadToken) return;
+    showMovers(result, objects);
   } catch (err) {
     console.error(err);
     status.textContent = `The search failed: ${err.message}`;
@@ -590,17 +716,19 @@ $("find-movers-btn").addEventListener("click", async () => {
   }
 });
 
-function showMovers({ candidates, stats, reason }) {
+function showMovers({ candidates, stats, reason }, catalogueObjects = null) {
+  moversCatalogueChecked = Boolean(catalogueObjects);
   const status = $("movers-status"), list = $("mover-list");
   if (reason) { status.textContent = `Cannot search: ${reason}.`; return; }
 
   const n = player.naturalSize;
   const geo = { ra: currentQuery.ra, dec: currentQuery.dec, n,
     scaleArcsec: currentFrames[0].pixelScaleArcsec ?? (currentQuery.fov * 60) / n };
+  const pool = catalogueObjects ? [...TARGETS, ...catalogueObjects] : TARGETS;     // test objects first: their motions are the best
   movers = candidates.map((c, k) => ({
     ...c, ...describeMover(c, geo),
     label: `#${k + 1}`,
-    known: matchKnownObject(c, geo, TARGETS)?.target.label ?? null,
+    known: matchKnownObject(c, geo, pool)?.target.label ?? null,
     // where it is on each frame's date, as image fractions (what the player draws)
     points: player.frames.map((f) => { const p = moverPositionAtMjd(c, f.mjd); return { fx: p.x / n, fy: p.y / n }; }),
   }));
@@ -648,8 +776,10 @@ function selectMover(k) {
   $("mover-detail-text").textContent =
     `${m.label}: ${m.speedArcsecPerYear.toFixed(1)}″/yr (${m.speedPx.toFixed(2)} px/yr) toward ${m.compass}, ` +
     `position angle ${m.positionAngleDeg.toFixed(0)}°. Middle of the observations: RA ${formatRA(m.ra)}, Dec ${formatDec(m.dec)}. ` +
-    (m.known ? `This is ${m.known}, one of the known test objects: the search found it on its own. `
-             : "Not one of the five test objects. Catalogues list year-2000 positions, so a fast mover can sit a little away from where it is catalogued. ");
+    (m.known ? `This is ${m.known}, a known object: the search found it on its own. `
+      : moversCatalogueChecked
+        ? "No SIMBAD object or test object sits within 18″ of it (catalogue positions moved to this date). It may be an asteroid, a faint star SIMBAD lacks, or something new: check the sky map and the other detectors. "
+        : "Not one of the five test objects (SIMBAD was not consulted: synthetic data, or it did not answer). Catalogues list year-2000 positions, so a fast mover can sit a little away from where it is catalogued. ");
 }
 
 $("mover-map-btn").addEventListener("click", async () => {
@@ -688,6 +818,24 @@ $("record-btn").addEventListener("click", async () => {
   }
 });
 
+// Embed: the same view inside an <iframe> on another page (?embed=1 hides the banner and the info sections).
+$("copy-embed-btn").addEventListener("click", async () => {
+  const url = new URL(location.href);
+  url.searchParams.set("embed", "1");
+  url.searchParams.delete("data");               // a public page cannot reach a backend on this computer
+  url.searchParams.delete("api");
+  url.hash = "";
+  const code = `<iframe src="${url.href}" title="SPHEREx Blink" width="100%" height="900" style="border:0" loading="lazy" allow="fullscreen"></iframe>`;
+  const btn = $("copy-embed-btn");
+  try {
+    await navigator.clipboard.writeText(code);
+    btn.textContent = "Embed code copied ✓";
+    setTimeout(() => { btn.textContent = "Embed code"; }, 1800);
+  } catch {
+    window.prompt("Copy this HTML:", code);       // clipboard blocked: let the user copy by hand
+  }
+});
+
 $("copy-link-btn").addEventListener("click", async () => {
   const ok = await copyLink();
   const btn = $("copy-link-btn");
@@ -709,6 +857,7 @@ async function loadData(query) {
   player.setTracks([]);
   clearMovers();
   $("track-info").textContent = "";
+  if (!$("show-catalogue").checked) $("catalogue-info").textContent = "";
   $("overview").hidden = true;
   showOverlay("Loading images…", `RA ${formatRA(query.ra)}  Dec ${formatDec(query.dec)}  ·  ${query.fov}′ field`);
 
@@ -794,6 +943,17 @@ badge.textContent = DATA_SOURCE === "api" ? "Live data" : "Synthetic demo data";
 badge.title = DATA_SOURCE === "api" ? "Images come from the backend"
   : "The images are generated in your browser for testing. They are not SPHEREx observations.";
 badge.classList.toggle("real", DATA_SOURCE === "api");
+
+// With ?embed=1 the banner (and its badge) is hidden: keep saying what the data is.
+$("embed-note").textContent = DATA_SOURCE === "api"
+  ? "SPHEREx Blink · images served by the project's backend"
+  : "SPHEREx Blink · synthetic demo data: the images are invented for testing, not SPHEREx observations";
+
+// The SIMBAD overlay needs real data: SIMBAD's stars do not match the invented sky of the demo.
+$("show-catalogue").disabled = DATA_SOURCE !== "api";
+$("show-catalogue").closest("label").title = DATA_SOURCE === "api"
+  ? "Catalogue objects around the field, moved to the date of each image"
+  : "Only with real data: the synthetic demo sky is invented, SIMBAD's stars would not match it.";
 
 if (!canRecord()) $("record-btn").title = "Your browser cannot record canvas video.";
 renderQuickPicks();

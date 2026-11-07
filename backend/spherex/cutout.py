@@ -16,6 +16,7 @@ import numpy as np
 from astropy.io import fits
 from astropy.wcs import WCS
 
+from .flags import bad_mask
 from .query import FrameFile
 
 
@@ -61,11 +62,11 @@ def cutout(frame: FrameFile, tgt: WCS, npix: int) -> tuple[np.ndarray, np.ndarra
 
 
 def flag_summary(flags: np.ndarray | None) -> dict | None:
-    """Contract field `flags`. Which bits really matter is TBD (DATA_CHECKLIST) – for now any bit."""
+    """Contract field `flags`: share of valid pixels with a BAD flag bit (see spherex/flags.py)."""
     if flags is None:
         return None
     valid = flags >= 0
     if not valid.any():
         return {"anyFlagged": False, "fractionFlagged": 0.0}
-    frac = float(np.count_nonzero(flags[valid]) / valid.sum())
+    frac = float(np.count_nonzero(bad_mask(flags)) / valid.sum())
     return {"anyFlagged": frac > 0, "fractionFlagged": round(frac, 5)}

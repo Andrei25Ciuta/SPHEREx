@@ -382,6 +382,25 @@ output { font-weight: 600; color: var(--accent); }
 }
 .mode-help .swatch { display: inline-block; width: .8em; height: .8em; border-radius: 2px; vertical-align: -1px; }
 
+/* Legend of the red flagged pixels */
+.flags-legend { margin: .4rem 0 0; font-size: .8rem; color: var(--text-muted); }
+.flags-legend .swatch { display: inline-block; width: .8em; height: .8em; border-radius: 2px; vertical-align: -1px; background: rgb(255 40 60); }
+
+/* ?embed=1 (the page inside an <iframe> on another site): only the workspace, no banner, about or footer */
+.embed .hero, .embed #about, .embed #telescope, .embed footer { display: none; }
+.embed .layout { padding-top: .75rem; }
+.embed-note { display: none; }
+.embed .embed-note { display: block; margin: 0; padding: .6rem clamp(1rem, 3vw, 2rem) 0; font-size: .8rem; color: var(--text-muted); }
+
+/* Compare mode: image A, the operation, image B */
+.compare-controls {
+  display: grid; grid-template-columns: 1fr minmax(9.5rem, auto) 1fr; gap: .5rem;
+  max-width: 640px; width: 100%; margin: 0 auto .7rem;
+}
+.compare-controls label { display: grid; gap: .2rem; min-width: 0; font-size: .78rem; color: var(--text-muted); }
+.compare-controls select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+@media (max-width: 560px) { .compare-controls { grid-template-columns: 1fr; } }
+
 #blink-canvas { cursor: crosshair; }
 
 .player-options, .tools {

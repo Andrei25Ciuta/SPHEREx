@@ -24,6 +24,14 @@ const emptyField = () => ({
   check("detects exactly one injected star", dots.length === 1, `${dots.length} dot(s)`);
   check("its centre is within 0.25 px", off < 0.25, `off by ${off.toFixed(2)} px`);
 
+  // A very bright star saturates the 8-bit picture into a flat-topped blob (seen on real Barnard's Star
+  // cutouts): its centre must still be found, or its position jumps from date to date.
+  const bright = emptyField();
+  bright.stars.push({ x: 30.3, y: 40.7, flux: 20000 });
+  const blob = detectSources(stretchAsinh(renderPixels(bright, 64, 60800, 0, 3, mulberry32(1))), 64);
+  const blobOff = blob.length ? Math.hypot(blob[0].x - 30.3, blob[0].y - 40.7) : NaN;
+  check("a saturated (flat-topped) star is centred within 0.5 px", blob.length === 1 && blobOff < 0.5, `${blob.length} dot(s), off by ${blobOff.toFixed(2)} px`);
+
   let falseDots = 0;
   for (let seed = 1; seed <= 10; seed++) {
     falseDots += detectSources(stretchAsinh(renderPixels(emptyField(), 200, 60800, 0, 3, mulberry32(seed))), 200).length;
