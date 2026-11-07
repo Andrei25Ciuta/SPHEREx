@@ -150,13 +150,22 @@ Rulat cu `backend/scripts/fetch_real_sample.py` (vezi `REAL_DATA_TEST.md`), de p
 - **Mișcarea (validare cap-coadă):** din cele 4 imagini, mișcarea proprie a lui Barnard's Star măsurată cu centroid e **−1,9 / +11,2 ″/an** (RA·cos δ / Dec), față de **−0,8 / +10,4** în catalog; steaua stă la 1,6–3,6″ (0,26–0,58 px) de poziția din catalog în toate cele 4 epoci, fără decalaj sistematic. Timpul, WCS-ul și orientarea (nu e oglindită) sunt corecte.
 - **Find movers pe aceste date** (4 imagini, prin backend): găsește Barnard's Star și îl etichetează „(known)", dar viteza iese 18,7″/an (catalog 10,4): cu 4 imagini, 1 px de zgomot de poziție (resamplare nearest-neighbour + PNG pe 8 biți) și doar ~1 an de bază, panta e slab determinată. Identificarea e corectă, valoarea numerică nu e încă bună.
 
-## 8d. Verificat pe 39 de fișiere REALE (7 nov 2026: Barnard D2 + D6, Epsilon Indi B D2 + D6, un cutout cu asteroidul Arosa) – vezi [VALIDATION.md](VALIDATION.md)
+## 8d. Verificat pe 60 de fișiere REALE (7 nov 2026: Barnard, Epsilon Indi B, WISE 0855, Arosa, Makemake) – vezi [VALIDATION.md](VALIDATION.md)
 
 - **Unități:** `BUNIT = MJy/sr`. Conversia în Jansky: flux (MJy/sr · pixeli) × 10⁶ × (pixel în rad)² (aplicată în `backend/spherex/photometry.py`).
 - **Stele foarte strălucitoare:** Barnard's Star are vârf de 580–1980 MJy/sr, iar în nucleul de 5×5 pixeli sunt setați biții **0** (tranzient), **1** (overflow) și **2** (eroare SUR) în 24–84 % din pixeli (D6 și D2). Deci aperturile și pozițiile lui sunt nesigure (fluxul e o limită inferioară). Biții 0, 1, 2 sunt în lista „răi" din `flags.py`, deci cele 21 de măsurători sunt marcate `flagged`.
 - **Alți biți observați în plus:** 17 (rar, o dată) și 26 (în imaginile din 2026; nu e în tabelul din documentația citită; netratat ca „rău").
 - **WCS:** distorsiunea SIP a unui fișier **diverge** departe de imagine (`NoConvergence` în `all_world2pix`) când indexezi mai multe câmpuri: `LocalArchive.find` o tratează acum ca „poziția nu e în acest cadru" (înainte, `/api/photometry` dădea HTTP 500).
 - **SkyBoT (IMCCE)**, verificat de pe rețeaua proiectului: `https://ssp.imcce.fr/webservices/skybot/api/conesearch.php?-ep=<JD>&-ra=&-dec=&-rd=<grade>&-mime=json&-output=basic&-loc=500` răspunde JSON cu `Access-Control-Allow-Origin: *` (browserul îl apelează direct, **fără proxy**), 204 când nu e niciun corp, 400 cu mesaj JSON la parametri greșiți; adresa veche `vo.imcce.fr` dă 403. Epoca e data iuliană (MJD + 2400000,5). Un asteroid din centura principală face ~570″/zi: se caută la data fiecărei imagini.
+
+## 8e. Fapte noi, aflate la a doua rundă pe date reale (7 nov 2026)
+
+- **Planul de steaguri** (`FLAGS`) se servește acum ca mască (`maskUrl`, un octet/pixel, nord sus): 1 = e setat un bit „rău”. O stea saturată se ajustează doar pe pixelii nemarcați; vezi [VALIDATION.md](VALIDATION.md) §2.
+- **Interogări TAP în paralel:** 4 interogări simultane către IRSA (2MASS `fp_psc`, AllWISE `allwise_p3as_psd`) au primit „connection forcibly closed”; rulate pe rând, trec. La o descărcare de cutout a apărut o dată HTTP 503; la a doua încercare a mers. Scripturile reîncearcă; nu paraleliza.
+- **Cataloage pentru scara Jy:** 2MASS `fp_psc` (coloane `j_m`, `h_m`, `k_m`, `ph_qual`, `cc_flg`, `gal_contam`) și AllWISE `allwise_p3as_psd` (`w1mpro`, `w2mpro`, `w2sigmpro`, `ph_qual`, `cc_flags`, `ext_flg`).
+- **Imagini care conțin un corp în mișcare:** `scratch/find_body_frames.py` cere efemerida de la JPL Horizons (`https://ssd.jpl.nasa.gov/api/horizons.api`, text/CSV, fără cont) și apoi, pentru fiecare dată, imaginile unui detector al căror poligon (`spherex.plane.poly`) conține poziția, într-o fereastră de ±5,5 zile din 10 în 10 zile (ferestre mai înguste lasă date neacoperite). Makemake: o primă căutare cu ferestre înguste a găsit 10 imagini D2 (31 dec 2025 – 9 iun 2026); cu ferestre de ±5,5 zile apar și cele din vara lui 2025; am descărcat 7 cutout-uri (2025-06-01 … 2026-06-09).
+- **Aceeași imagine, două poziții:** un cutout se cere pe poziție; pentru a vedea că un asteroid s-a mișcat, ai nevoie de câte un cutout al aceleiași imagini la fiecare poziție (Arosa: imaginea de la 00:10 UTC la ambele poziții, cea de la 19:42 UTC doar la a doua).
+- **Lungimea de undă depinde de poziția pe detector** (filtru variabil liniar): aceeași imagine are 1,2026–1,2319 µm într-un loc și 1,1915–1,2206 µm în altul, la 0,14° distanță.
 
 ## 9. Încă neclar / de verificat
 

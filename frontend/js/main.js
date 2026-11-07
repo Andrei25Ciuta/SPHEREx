@@ -16,7 +16,7 @@ import { BlinkPlayer, MODES, loadImage, meanImageData } from "./player.js";
 import { canvasToSky, measureAndPlot, clearMeasurement, APERTURE_RADIUS_PX } from "./features/measure.js";
 import { SkyContext } from "./features/skyContext.js";
 import { setupFullscreen } from "./features/fullscreen.js";
-import { findMoversInImages, detectSources, describeMover, matchKnownObject, moverPositionAtMjd, passIndices } from "./features/movers.js";
+import { findMoversAcrossDetectors, detectSources, describeMover, matchKnownObject, moverPositionAtMjd, passIndices, trackSupport, blendWarning } from "./features/movers.js";
 import { colourHint } from "./features/spectrum.js";
 import { findDistantMovers, describeDistant, classifyApparentMotion } from "./features/parallax.js";
 import { candidatesToCsv, candidatesToJson, exportFileName } from "./features/export.js";
@@ -499,7 +499,10 @@ async function showDetector(detector) {
   updateAsteroids();                     // known asteroids at these images' dates, if the box is ticked
   // Re-apply the mode: it may need ≥ 2 frames, and the info line depends on it.
   setMode(player.mode, { updateUrl: false });
+  $("movers-all-det").closest("label").hidden = !hasSeveralDetectors();       // nothing to choose with one detector
   $("movers-status").textContent = moversHint();
+  $("find-movers-btn").disabled = !canFindMovers();
+  $("find-distant-btn").disabled = !canFindMovers();
 
   if (currentFrames.length === 1) {
     setStatus(`Only one ${detector} image here – nothing to blink. Try another detector.`);
@@ -588,7 +591,7 @@ function clearMarker() {
 // ---------------------------------------------------------------
 // Sky context (Aladin Lite)
 // ---------------------------------------------------------------
-const sky = new SkyContext($("aladin-box"), $("aladin-status"));
+const sky = new SkyContext($("aladin-box"), $("aladin-status"), $("sky-geo-note"));
 setupFullscreen($("sky-frame"), $("sky-full-btn"));   // map + its controls fill the screen
 /** Open (or re-centre) the sky map on a position { ra, dec, fov }. */
 async function openSkyMap(q) {
@@ -731,18 +734,32 @@ let selectedMover = -1;
 let moversCatalogueChecked = false;        // was SIMBAD consulted for the list on screen?
 
 const countPasses = (frames) => (frames.length ? passIndices(frames.map((f) => f.mjd)).at(-1) + 1 : 0);
-const canFindMovers = () => player.length >= 3 && countPasses(player.frames) >= MIN_PASSES;
+
+// The search uses only positions, never brightness, so the images of ALL detectors of the field can be linked together
+// (different wavelengths do not matter): 3-6 times more images and passes than one detector has. On real data the
+// blind test went from 0.62 to 0.52 arcsec/yr (Epsilon Indi B) and 0.80 to 0.28 (Barnard) off the catalogue.
+const frameId = (f) => `${f.detector}@${f.mjd}`;
+const hasSeveralDetectors = () => new Set(allFrames.map((f) => f.detector)).size > 1;
+const useAllDetectors = () => $("movers-all-det").checked && hasSeveralDetectors();
+const searchFrames = () => (useAllDetectors() ? allFrames : player.frames);
+const canFindMovers = () => { const fr = searchFrames(); return player.length >= 1 && fr.length >= 3 && countPasses(fr) >= MIN_PASSES; };
 
 /** What the status line says before a search: the hint, or why the search is not possible. */
 function moversHint() {
-  const n = player.length, det = currentDetector;
-  if (n < 3) return `Needs at least 3 images of one detector (${det} has ${n}).`;
-  const passes = countPasses(player.frames);
+  const fr = searchFrames(), n = fr.length, det = useAllDetectors() ? "all detectors together" : `detector ${currentDetector}`;
+  if (n < 3) return `Needs at least 3 images (${det} has ${n}).`;
+  const passes = countPasses(fr);
   if (passes < MIN_PASSES) {
-    return `Needs images from at least ${MIN_PASSES} survey passes, about 6 months apart (${det} has ${passes}). Try another detector.`;
+    return `Needs images from at least ${MIN_PASSES} survey passes, about 6 months apart (${det} has ${passes}).${useAllDetectors() ? "" : " Try another detector, or all detectors together."}`;
   }
   return MOVERS_HINT;
 }
+$("movers-all-det").addEventListener("change", () => {
+  clearMovers();
+  $("movers-status").textContent = moversHint();
+  $("find-movers-btn").disabled = !player.length || !canFindMovers();
+  $("find-distant-btn").disabled = !player.length || !canFindMovers();
+});
 
 function clearMovers() {
   movers = [];
@@ -755,47 +772,115 @@ function clearMovers() {
   $("movers-status").textContent = MOVERS_HINT;
 }
 
+/** Grey values (0..255) of one image from its PNG URL (for images the player does not hold), or null if the browser refuses. */
+async function greyOfImage(url, n) {
+  try {
+    const img = await new Promise((resolve, reject) => { const im = new Image(); im.onload = () => resolve(im); im.onerror = reject; im.src = url; });
+    const c = document.createElement("canvas");
+    c.width = c.height = n;
+    const ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, n, n);
+    const d = ctx.getImageData(0, 0, n, n).data;
+    const g = new Uint8ClampedArray(n * n);
+    for (let i = 0; i < g.length; i++) g[i] = d[4 * i];
+    return g;
+  } catch { return null; }
+}
+
 /**
- * The pixels the detector works on. Real data: the backend also serves every cutout as float32
- * (`dataUrl`), with no 8-bit clipping and finer positions. Otherwise the 8-bit pictures of the player.
+ * The pixels the detector works on, for the given frames (the player's or, with "all detectors", every frame of the field).
+ * Real data: the backend also serves every cutout as float32 (`dataUrl`), with no 8-bit clipping and finer positions.
+ * Otherwise the 8-bit pictures: the player's own, and the other detectors' decoded from their image URLs.
  */
-async function detectionPixels() {
+async function detectionPixels(frames = player.frames) {
   const n = player.naturalSize;
-  if (player.frames.length && player.frames.every((f) => f.dataUrl)) {
+  if (frames.length && frames.every((f) => f.dataUrl)) {
     try {
-      const arrays = await Promise.all(player.frames.map(async (f) => {
+      const arrays = await Promise.all(frames.map(async (f) => {
         const response = await fetch(f.dataUrl);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const values = new Float32Array(await response.arrayBuffer());
         if (values.length !== n * n) throw new Error("unexpected size");
         return values;
       }));
-      return { arrays, isFloat: true };
+      // Bad-pixel masks (a saturated star's flagged core): optional, a missing one just means the plain centroid is used.
+      const masks = await Promise.all(frames.map(async (f) => {
+        if (!f.maskUrl) return null;
+        try {
+          const response = await fetch(f.maskUrl);
+          const bytes = response.ok ? new Uint8Array(await response.arrayBuffer()) : null;
+          return bytes && bytes.length === n * n ? bytes : null;
+        } catch { return null; }
+      }));
+      return { arrays, masks, isFloat: true };
     } catch (err) {
       console.warn("Float pixels unavailable, using the 8-bit pictures:", err);
     }
   }
-  return { arrays: player.greyFrames(), isFloat: false };
+  const own = player.greyFrames();
+  const arrays = await Promise.all(frames.map(async (f) => {
+    const i = player.frames.indexOf(f);
+    return i >= 0 && own ? own[i] : greyOfImage(f.imageUrl, n);
+  }));
+  return { arrays: arrays.every(Boolean) ? arrays : null, masks: null, isFloat: false };
 }
+
+/**
+ * Measure every candidate at its predicted position in EVERY image of its own set, also where no dot was found
+ * (features/movers.js trackSupport). A real mover is there nearly everywhere; a chance line only where it caught its dots.
+ */
+function addSupport(candidates, frames, arrays, n, detectOptions = {}) {
+  const dotsCache = new Map();                                      // the dots of each image, found once
+  const dotsOf = (fi) => { if (!dotsCache.has(fi)) dotsCache.set(fi, detectSources(arrays[fi], n, detectOptions)); return dotsCache.get(fi); };
+  for (const c of candidates) {
+    const idx = c.frameIds ? c.frameIds.map((id) => frames.findIndex((f) => frameId(f) === id)) : frames.map((_, k) => k);
+    const positions = idx.map((fi, j) => {
+      const p = moverPositionAtMjd(c, frames[fi].mjd), s = c.shifts?.[j];
+      return { x: p.x + (s?.dx ?? 0), y: p.y + (s?.dy ?? 0) };
+    });
+    c.support = trackSupport(idx.map((fi) => arrays[fi]), n, positions);
+    // another source in or next to the measuring circle: its light goes into the spectrum along the path
+    c.blend = blendWarning(positions, idx.map(dotsOf));
+  }
+}
+
+/** What the path check says (empty if it was not run). */
+function supportSentence(m) {
+  const s = m.support;
+  if (!s || !s.measurable) return "";
+  const text = `On its path it is present in ${s.supported} of ${s.measurable} images (flux at the predicted spot, also where no dot was found)`;
+  return s.fraction >= 0.8 ? ` ${text}: that is what a real object does.`
+    : s.fraction >= 0.5 ? ` ${text}: only some images, so it may be faint in some wavelengths, or a chance alignment.`
+      : ` ${text}: that is typical of a chance alignment of unrelated dots, so be sceptical.`;
+}
+
+/** "1 detector" / "3 detectors" for the search messages. */
+const describeSearchSet = (frames) => {
+  const dets = new Set(frames.map((f) => f.detector)).size;
+  return `${frames.length} images${dets > 1 ? ` from ${dets} detectors` : ""}`;
+};
 
 $("find-movers-btn").addEventListener("click", async () => {
   if (!player.length || !currentQuery) return;
   const token = loadToken;
   const status = $("movers-status");
+  const frames = searchFrames();
   $("find-movers-btn").disabled = true;
   clearMovers();
-  status.textContent = `Searching… comparing the dots in ${player.length} images.`;
+  status.textContent = `Searching… comparing the dots in ${describeSearchSet(frames)}.`;
   await new Promise((resolve) => setTimeout(resolve, 30));      // let the browser show that message first
   if (token !== loadToken) return;                               // new data arrived meanwhile
   try {
-    const { arrays, isFloat } = await detectionPixels();
+    const { arrays, masks, isFloat } = await detectionPixels(frames);
     if (!arrays) {
       status.textContent = "Cannot read the image pixels in this browser (images from another site), so the search cannot run.";
       return;
     }
     if (token !== loadToken) return;
-    const result = findMoversInImages(player.frames.map((f, i) => ({ mjd: f.mjd, grey: arrays[i] })), player.naturalSize,
-      isFloat ? { sigmaFloor: 1e-9 } : {});
+    // every detector together AND each alone, merged (a candidate knows which image each entry of its shifts belongs to)
+    const result = findMoversAcrossDetectors(frames.map((f, i) => ({ mjd: f.mjd, detector: f.detector, id: frameId(f), grey: arrays[i], mask: masks?.[i] ?? null })),
+      player.naturalSize, isFloat ? { sigmaFloor: 1e-9 } : {});
+    addSupport(result.candidates, frames, arrays, player.naturalSize, { ...(isFloat ? { sigmaFloor: 1e-9 } : {}) });
     // Known objects: the test list always, and real SIMBAD objects too when we have real data.
     if (DATA_SOURCE === "api") status.textContent = "Checking SIMBAD and SkyBoT for known objects…";
     const [objects] = await Promise.all([ensureCatalogue(), ensureAsteroids()]);        // each answers null if it cannot: never blocks
@@ -822,24 +907,29 @@ $("find-distant-btn").addEventListener("click", async () => {
   if (!player.length || !currentQuery) return;
   const token = loadToken;
   const status = $("movers-status");
+  const frames = searchFrames();
   $("find-movers-btn").disabled = true;
   $("find-distant-btn").disabled = true;
   clearMovers();
-  status.textContent = `Searching for a distant body… testing which dots follow Earth's parallax in ${player.length} images.`;
+  status.textContent = `Searching for a distant body… testing which dots follow Earth's parallax in ${describeSearchSet(frames)}.`;
   await new Promise((resolve) => setTimeout(resolve, 30));
   if (token !== loadToken) return;
   try {
-    const { arrays, isFloat } = await detectionPixels();
+    const { arrays, masks, isFloat } = await detectionPixels(frames);
     if (!arrays) {
       status.textContent = "Cannot read the image pixels in this browser (images from another site), so the search cannot run.";
       return;
     }
     if (token !== loadToken) return;
     const n = player.naturalSize;
-    const detected = player.frames.map((f, i) => ({ mjd: f.mjd, sources: detectSources(arrays[i], n, isFloat ? { sigmaFloor: 1e-9 } : {}) }));
+    const detected = frames.map((f, i) => ({ mjd: f.mjd, sources: detectSources(arrays[i], n, { ...(isFloat ? { sigmaFloor: 1e-9 } : {}), mask: masks?.[i] ?? null }) }));
     await ensureAsteroids();                                                              // (a swinging body could also be a known one)
     if (token !== loadToken) return;
-    showMovers(findDistantMovers(detected, currentGeo()), null, { distant: true });
+    const result = findDistantMovers(detected, currentGeo());
+    const ids = frames.map(frameId);
+    for (const c of result.candidates) c.frameIds = ids;
+    addSupport(result.candidates, frames, arrays, n, isFloat ? { sigmaFloor: 1e-9 } : {});
+    showMovers(result, null, { distant: true });
   } catch (err) {
     console.error(err);
     status.textContent = `The search failed: ${err.message}`;
@@ -865,7 +955,7 @@ function showMovers({ candidates, stats, reason }, catalogueObjects = null, { di
     // where it is on each frame's date, as image fractions (what the player draws)
     // (the search works on image-registered positions: add each image's own shift back to hit its pixel)
     points: player.frames.map((f, k) => {
-      const p = moverPositionAtMjd(c, f.mjd), s = c.shifts?.[k];
+      const p = moverPositionAtMjd(c, f.mjd), s = c.shifts?.[c.frameIds ? c.frameIds.indexOf(frameId(f)) : k];
       return { fx: (p.x + (s?.dx ?? 0)) / n, fy: (p.y + (s?.dy ?? 0)) / n };
     }),
   }));
@@ -901,7 +991,10 @@ function showMovers({ candidates, stats, reason }, catalogueObjects = null, { di
         ? `about ${Math.round(m.distanceAU)} AU away (${m.distant.rangeText}) · own drift ${m.speedArcsecPerYear.toFixed(0)}″/yr toward ${m.compass}`
         : `${m.speedArcsecPerYear.toFixed(1)}″/yr toward ${m.compass}${m.known ? ` · ${m.known} (known)` : ""}` });
     const sub = Object.assign(document.createElement("span"), { className: "mover-sub",
-      textContent: `RA ${formatRA(m.ra)}  Dec ${formatDec(m.dec)} · seen in ${m.nDet} of ${m.nFrames} images · ${m.significance > 100 ? ">100" : Math.round(m.significance)}σ` });
+      textContent: `RA ${formatRA(m.ra)}  Dec ${formatDec(m.dec)} · seen in ${m.nDet} of ${m.nFrames} images · ${m.significance > 100 ? ">100" : Math.round(m.significance)}σ` +
+        (Number.isFinite(m.falseAlarm) ? ` · chance: ${chanceText(m.falseAlarm)}` : "") +
+        (m.support?.measurable ? ` · on its path in ${m.support.supported}/${m.support.measurable}` : "") +
+        (m.foundIn && hasSeveralDetectors() ? ` · found with ${m.foundIn === "all detectors" ? "all detectors together" : m.foundIn + " alone"}` : "") });
     btn.append(rank, main, sub);
     btn.addEventListener("click", () => selectMover(selectedMover === k ? -1 : k));
     li.append(btn);
@@ -958,6 +1051,8 @@ function selectMover(k) {
       `Middle of the observations: RA ${formatRA(m.ra)}, Dec ${formatDec(m.dec)}. ` +
       (DATA_SOURCE === "api" ? "" : "This is the simulated body of the demo (synthetic data), not a discovery. ") +
       (asteroidSentence(m) ? asteroidSentence(m).trimStart() + " " : "") +
+      (supportSentence(m) ? supportSentence(m).trimStart() + " " : "") +
+      parallaxCaution(m) +
       "Approximations: the Earth's position comes from a simple formula, the body's own motion is taken as a straight line, and it is assumed to be bound to the Sun.";
     return;
   }
@@ -968,7 +1063,26 @@ function selectMover(k) {
       : moversCatalogueChecked
         ? "No SIMBAD object or test object sits within 18″ of it (catalogue positions moved to this date). It may be an asteroid, a faint star SIMBAD lacks, or something new: check the sky map and the other detectors. "
         : "Not one of the five test objects (SIMBAD was not consulted: synthetic data, or it did not answer). Catalogues list year-2000 positions, so a fast mover can sit a little away from where it is catalogued. ") +
-    (m.known ? "" : classifyApparentMotion(m.speedArcsecPerYear) + asteroidSentence(m));
+    (m.known ? "" : classifyApparentMotion(m.speedArcsecPerYear) + asteroidSentence(m)) + supportSentence(m);
+}
+
+/**
+ * A swinging-body candidate has 5 free parameters (position, drift east/north, distance) and 2 numbers per dot, so with 4 or 5
+ * dots only 3 to 5 degrees of freedom are left to test the model. On real SPHEREx cutouts of Makemake the search returned only
+ * chance combinations of dots (docs/VALIDATION.md), and the sigma figure was in the thousands for them: say so.
+ */
+function parallaxCaution(m) {
+  if (!(m.nDet <= 5)) return "";
+  const dof = 2 * m.nDet - 5;
+  return `Caution: only ${m.nDet} dots fix 5 parameters (${dof} degrees of freedom left), so a chance alignment of dots can fit as well and the σ figure does not say how likely it is real. ` +
+    "Look for the same path in the other detectors and in more images before believing it. ";
+}
+
+/** The expected number of chance lines like this one in the field, in words a reader can use. */
+function chanceText(expected) {
+  if (expected < 1e-6) return "far below 1 in a million";
+  if (expected < 0.01) return `about 1 in ${Math.round(1 / expected).toLocaleString("en-US")}`;
+  return `${expected.toFixed(2)} expected`;
 }
 
 /** What the SkyBoT check says about a candidate (empty when it was not run). */
@@ -1020,7 +1134,10 @@ $("mover-spectrum-btn").addEventListener("click", async () => {
       title: m.label,
     });
     if (token !== measureToken) return;
-    colour.textContent = colourHint(points ?? []).text +
+    const blend = m.blend && m.blend.blended >= Math.max(2, Math.ceil(0.3 * m.blend.distances.length))
+      ? ` Warning: another source lies within ${(m.blend.nearestPx * currentGeo().scaleArcsec).toFixed(0)}″ of its path in ${m.blend.blended} of ${m.blend.distances.length} images, so these measurements include its light (the colour above may be that neighbour's, not the candidate's).`
+      : "";
+    colour.textContent = colourHint(points ?? []).text + blend +
       (DATA_SOURCE === "api" ? "" : " (Synthetic demo data: this colour comes from the simulation, not from the sky.)");
     $("measure-title").scrollIntoView({ block: "start", behavior: prefersReducedMotion ? "auto" : "smooth" });
   } catch (err) {

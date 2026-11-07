@@ -11,6 +11,7 @@
 // Older surveys are also handy for movers: a fast star sits somewhere ELSE in 2MASS (1999)!
 
 import { SKY_TILES, API_BASE } from "../config.js";
+import { WORLD_URL, decodeCountries, overheadAt } from "./skyGeo.js";
 
 const ALADIN_URL = "https://cdn.jsdelivr.net/npm/aladin-lite@3.6.5/dist/aladin.js";
 const SIMBAD_TAP = "https://simbad.harvard.edu/simbad/sim-tap/sync";
@@ -99,14 +100,66 @@ function squareCorners(ra, dec, fovArcmin) {
   return [[ra + h / c, dec + h], [ra - h / c, dec + h], [ra - h / c, dec - h], [ra + h / c, dec - h]];
 }
 
+const READOUT_HELP = "The country in brackets is the one this spot of the sky is straight above at this moment (worked out from the coordinates and the Earth's rotation). It is not where SPHEREx is.";
+const GEO_NOTE = "In brackets: the country this spot of the sky is straight above right now, worked out from the sky coordinates and the Earth's rotation. The Earth turns, so it moves west about 15° an hour. It is not where SPHEREx is. Borders: Natural Earth, low resolution (small islands are missing), so near a border or a coast it can be off by tens of kilometres.";
+const GEO_NOTE_FAILED = "The country names could not be loaded (offline?), so only the sky coordinates are shown.";
+
+/** The world map for the country readout, loaded once (a few tens of kilobytes). Never throws: null when it could not be loaded. */
+let worldPromise = null;
+function loadWorld() {
+  worldPromise ??= fetch(WORLD_URL, { signal: AbortSignal.timeout(8000) })
+    .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    .then(decodeCountries)
+    .catch((err) => { console.warn("World map for the country readout failed", err); worldPromise = null; return null; });
+  return worldPromise;
+}
+
 export class SkyContext {
-  constructor(container, statusEl) {
+  constructor(container, statusEl, noteEl = null) {
     this.container = container;
     this.statusEl = statusEl;
+    this.noteEl = noteEl;               // the paragraph that explains the country in brackets
     this.aladin = null;
     this.A = null;
     this.query = null;
     this.survey = "2mass";
+    this.readout = null;                // the box in the corner: coordinates and, in brackets, the country overhead
+    this.world = null;                  // countries (skyGeo.js), once loaded
+    this.hovering = false;
+    this.lastMove = 0;
+    this.shown = null;                  // { ra, dec, label } of the readout, to redraw it when the world map arrives
+  }
+
+  /** Put coordinates (ICRS degrees) in the readout, with the country that sky point is straight above right now. */
+  setReadout(ra, dec, label) {
+    if (!this.readout) return;
+    this.shown = { ra, dec, label };
+    let text = `${label}: RA ${ra.toFixed(3)}°, Dec ${dec.toFixed(3)}°`;
+    if (this.world) text += ` (overhead now: ${overheadAt(this.world, ra, dec, new Date()).text})`;
+    this.readout.textContent = text;
+  }
+  /** The map's own centre, shown when the pointer is not over the map. */
+  showCentre() {
+    this.hovering = false;
+    if (!this.aladin) return;
+    const c = this.aladin.getRaDec();                                  // always ICRS, whatever frame the map shows
+    if (Number.isFinite(c?.[0]) && Number.isFinite(c?.[1])) this.setReadout(c[0], c[1], "Centre");
+  }
+  onHover(e) {
+    const now = performance.now();
+    if (now - this.lastMove < 60) return;                              // a few updates per second are enough
+    this.lastMove = now;
+    const p = this.aladin.pix2world(e.x, e.y, "icrs");                 // the event's own ra/dec are in the frame being shown; this is always ICRS
+    if (!Number.isFinite(p?.[0]) || !Number.isFinite(p?.[1])) return;
+    this.hovering = true;
+    this.setReadout(p[0], p[1], "Cursor");
+  }
+  /** Load the country map once and redraw the readout with it. */
+  async ensureWorld() {
+    if (this.world) return;
+    this.world = await loadWorld();
+    if (this.noteEl) this.noteEl.textContent = this.world ? GEO_NOTE : GEO_NOTE_FAILED;
+    if (this.shown) this.setReadout(this.shown.ra, this.shown.dec, this.shown.label);
   }
 
   get isOpen() { return !!this.aladin; }
@@ -136,11 +189,21 @@ export class SkyContext {
         showFrame: true,
         log: false,            // Aladin's default usage ping to CDS: off (it fails on networks that block CDS)
       });
+      // Coordinates box in the corner (pointer = cursor position, otherwise the map centre). It does not catch the mouse.
+      this.readout = document.createElement("div");
+      this.readout.className = "sky-readout";
+      this.readout.title = READOUT_HELP;
+      this.container.appendChild(this.readout);
+      this.aladin.on("mouseMove", (e) => this.onHover(e));
+      this.aladin.on("positionChanged", () => { if (!this.hovering) this.showCentre(); });
+      this.container.addEventListener("pointerleave", () => this.showCentre());
     }
     // The source can change between two openings (e.g. the backend was started meanwhile).
     else if (before !== source) this.setSurvey(this.survey);
     this.statusEl.textContent = SOURCE_NOTE[source];
+    if (this.noteEl) { this.noteEl.hidden = false; this.noteEl.textContent = this.world ? GEO_NOTE : "Loading country names…"; }
     this.update(query);
+    this.ensureWorld();                  // not awaited: the map works at once, the country appears when the borders have arrived
   }
 
   setSurvey(key) {
@@ -160,6 +223,8 @@ export class SkyContext {
     const { ra, dec, fov } = query;
     aladin.gotoRaDec(ra, dec);
     aladin.setFoV(Math.max(fov * 3, 6) / 60);          // show some context around the field
+    this.hovering = false;
+    this.setReadout(ra, dec, "Centre");
 
     if (this.overlay) this.overlay.removeAll();
     else {

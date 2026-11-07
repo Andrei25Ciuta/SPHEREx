@@ -22,6 +22,7 @@
 // at most 1 AU). Pure functions, so they also run in Node tests.
 
 import { DEFAULTS, registerShifts, passIndices } from "./movers.js";
+import { canvasToSky } from "../geometry.js";
 
 const DEG = Math.PI / 180;
 export const ARCSEC_PER_RAD = 206264.806;
@@ -153,6 +154,10 @@ function solve(A, b) {
 export function findDistantMovers(frames, geo, options = {}) {
   const o = { minDistanceAU: 50, maxDistanceAU: 5000, minParallaxSigma: 6, seedResidualPx: 2, maxSeedDots: 80, maxTriples: 4e7,
     maxEscapeFactor: 1.5,       // the body must be bound to the Sun: own speed at most this times the escape speed (Infinity = no limit)
+    minParallaxFraction: 0.6,   // a body must be found at this fraction of the distinct dates (0.5 for the faint real one of VALIDATION.md)
+    minPerPass: 2,              // ... and have at least this many dots in each survey pass it uses (1 for a faint body seen once per pass)
+    maxParallaxRmsPx: 0.6,      // rms of its dots about the model; real faint sources need about 1.5 (centroid error of S/N 4-8 sources).
+                                // The effective limit is the smaller of this and maxRmsPx (0.8 from findMovers): pass both to loosen it.
     ...DEFAULTS, ...options };
   const N = frames.length;
   const stats = { frames: N, passes: 0, dotsPerFrame: frames.map((f) => f.sources.length), movingDots: 0, seeds: 0, triples: 0, truncated: false };
@@ -162,9 +167,26 @@ export function findDistantMovers(frames, geo, options = {}) {
   stats.passes = nEpochs;
   if (nEpochs < 3) return { candidates: [], stats, reason: `needs images from at least 3 survey passes (found ${nEpochs})` };
 
-  // 0) pointing errors between exposures, exactly as in findMovers
-  const reg = o.register === false ? frames.map(() => ({ dx: 0, dy: 0 })) : registerShifts(frames).map((s) => (Math.abs(s.dx) > 0.05 || Math.abs(s.dy) > 0.05 ? s : { dx: 0, dy: 0 }));
-  const dots = frames.map((f, k) => f.sources.map((s) => ({ k, x: s.x - reg[k].dx, y: s.y - reg[k].dy, snr: s.snr ?? 0, used: false })));
+  // 0) several fields: an image that carries its own field (frame.geo = { ra, dec, n, scaleArcsec } of ITS cutout) has its dots
+  //    brought into the common plane of `geo`. A body that swings out of one cutout is then followed into the next one (the plane
+  //    can be as large as the cutouts together; flat-field approximation, fine up to about a degree).
+  //    Each cutout is small (the flat-field approximation of geometry.js is fine inside it); the common plane is the exact
+  //    gnomonic (tangent-plane) projection about geo's centre, the same one the parallax offsets use, so cutouts degrees apart still agree.
+  const gnomonic = (ra, dec) => {
+    const a = (ra - geo.ra) * DEG, d = dec * DEG, d0 = geo.dec * DEG;
+    const D = Math.sin(d0) * Math.sin(d) + Math.cos(d0) * Math.cos(d) * Math.cos(a);
+    const east = (Math.cos(d) * Math.sin(a) / D) * ARCSEC_PER_RAD, north = ((Math.cos(d0) * Math.sin(d) - Math.sin(d0) * Math.cos(d) * Math.cos(a)) / D) * ARCSEC_PER_RAD;
+    return { x: geo.n / 2 - east / geo.scaleArcsec, y: geo.n / 2 - north / geo.scaleArcsec };       // east is LEFT, north is UP
+  };
+  const inCommon = (f) => (f.geo
+    ? f.sources.map((s) => { const sky = canvasToSky(s.x / f.geo.n, s.y / f.geo.n, f.geo); return { ...s, ...gnomonic(sky.ra, sky.dec) }; })
+    : f.sources);
+  const plane = frames.map((f) => ({ mjd: f.mjd, sources: inCommon(f) }));
+  stats.dotsPerFrame = plane.map((f) => f.sources.length);
+
+  // pointing errors between exposures, exactly as in findMovers
+  const reg = o.register === false ? frames.map(() => ({ dx: 0, dy: 0 })) : registerShifts(plane).map((s) => (Math.abs(s.dx) > 0.05 || Math.abs(s.dy) > 0.05 ? s : { dx: 0, dy: 0 }));
+  const dots = plane.map((f, k) => f.sources.map((s) => ({ k, x: s.x - reg[k].dx, y: s.y - reg[k].dy, snr: s.snr ?? 0, used: false })));
 
   const t0 = frames[0].mjd, mjdRef = (t0 + frames[N - 1].mjd) / 2;
   const t = frames.map((f) => (f.mjd - mjdRef) / 365.25);                         // years from the middle date
@@ -179,11 +201,26 @@ export function findDistantMovers(frames, geo, options = {}) {
   const sMin = 1 / o.maxDistanceAU, sMax = 1 / o.minDistanceAU;
 
   // 1) dots of field stars (still in >= 3 passes) can never be a swinging body: leave them out of the seeds
+  // (a grid of cells per image, so a mosaic of thousands of dots is not compared pair by pair)
+  const CELL = Math.max(2, Math.ceil(o.staticRadiusPx));
+  const cells = dots.map((list) => {
+    const m = new Map();
+    for (const d of list) { const key = Math.floor(d.x / CELL) * 100003 + Math.floor(d.y / CELL); (m.get(key) ?? m.set(key, []).get(key)).push(d); }
+    return m;
+  });
+  const hasPartner = (k, a) => {
+    const cx = Math.floor(a.x / CELL), cy = Math.floor(a.y / CELL);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      const list = cells[k].get((cx + dx) * 100003 + cy + dy);
+      if (list) for (const b of list) if (Math.hypot(b.x - a.x, b.y - a.y) <= o.staticRadiusPx) return true;
+    }
+    return false;
+  };
   const still = (a) => {
     const seen = new Set([epoch[a.k]]);
     for (let k = 0; k < N; k++) {
       if (epoch[k] === epoch[a.k] || seen.has(epoch[k])) continue;
-      for (const b of dots[k]) if (Math.hypot(b.x - a.x, b.y - a.y) <= o.staticRadiusPx) { seen.add(epoch[k]); break; }
+      if (hasPartner(k, a)) seen.add(epoch[k]);
     }
     return seen.size >= Math.min(nEpochs, 3);
   };
@@ -269,14 +306,16 @@ export function findDistantMovers(frames, geo, options = {}) {
   // A 5-parameter model fitted to 3 dots can pass through chance dots in a few other images, so ask for
   // most of the images (a real body is in most of them) and for at least two dots in every pass it uses;
   // the plain search needs only half of the images.
-  const minDet = Math.max(o.minDetections, Math.ceil(0.6 * N));
+  // (counted over the distinct DATES: with a mosaic there are several images per date and the body is in only one of them)
+  const nTimes = new Set(frames.map((f) => f.mjd)).size;
+  const minDet = Math.max(o.minDetections, Math.ceil(o.minParallaxFraction * nTimes));
   const epochsOf = (list) => new Set(list.map((d) => epoch[d.k])).size;
   const wellCovered = (list) => {
     const per = new Array(nEpochs).fill(0);
     for (const d of list) per[epoch[d.k]] += 1;
-    return per.filter((n, e) => n >= Math.min(2, framesOf[e].length)).length >= minEpochs;
+    return per.filter((n, e) => n >= Math.min(o.minPerPass, framesOf[e].length)).length >= minEpochs;
   };
-  const maxRms = Math.min(o.maxRmsPx, 0.6);
+  const maxRms = Math.min(o.maxRmsPx, o.maxParallaxRmsPx);
 
   // 2) seeds: three dots from three different passes. For the model  position = A + mu*t + s*g  the middle
   //    one must be displaced from the straight line through the other two by a vector PARALLEL to
@@ -345,7 +384,7 @@ export function findDistantMovers(frames, geo, options = {}) {
               const cand = {
                 x: th[0], y: th[1], vx: th[2], vy: th[3], mjdRef,
                 speedPx: Math.hypot(th[2], th[3]), motionPx: Math.hypot(th[2], th[3]) * (Math.max(...list.map((d) => t[d.k])) - Math.min(...list.map((d) => t[d.k]))),
-                nDet: m, nFrames: N, rms, rmsLinear, significance: parallaxSigma, parallaxSigma,
+                nDet: m, nFrames: nTimes, rms, rmsLinear, significance: parallaxSigma, parallaxSigma,
                 snr: list.reduce((s, d) => s + d.snr, 0) / m,
                 distanceAU: rho, distanceRangeAU: [edge(-1), edge(1)],
                 points: list.map((d) => ({ frame: d.k, x: d.x, y: d.y })),
@@ -357,16 +396,21 @@ export function findDistantMovers(frames, geo, options = {}) {
               // (Also rivals: two models that predict the same spot, within 3 px, on at least half of the images.)
               const dotSet = new Set(list), score = m - rms;
               const predicted = frames.map((_, k) => { const off = offPx(k, rho); return { x: th[0] + th[2] * t[k] + off.x, y: th[1] + th[3] * t[k] + off.y }; });
-              const rival = found.findIndex((f) => {
+              // The new candidate is compared with ALL its rivals (rivalry is not transitive: A and B may both rival C
+              // without rivalling each other); it stays only if it beats every one of them, and then it replaces all of them.
+              const rivals = [];
+              found.forEach((f, idx) => {
                 let shared = 0;
                 for (const d of dotSet) if (f.dots.has(d)) shared++;
-                if (shared >= 2) return true;
                 let close = 0;
                 for (let k = 0; k < N; k++) if (Math.hypot(f.predicted[k].x - predicted[k].x, f.predicted[k].y - predicted[k].y) <= 3) close++;
-                return close >= N / 2;
+                if (shared >= 2 || close >= N / 2) rivals.push(idx);
               });
-              if (rival < 0) found.push({ c: cand, dots: dotSet, score, predicted });
-              else if (score > found[rival].score) found[rival] = { c: cand, dots: dotSet, score, predicted };
+              if (!rivals.length) found.push({ c: cand, dots: dotSet, score, predicted });
+              else if (rivals.every((idx) => score > found[idx].score)) {
+                for (let r = rivals.length - 1; r >= 0; r--) found.splice(rivals[r], 1);
+                found.push({ c: cand, dots: dotSet, score, predicted });
+              }
             }
             if (stats.truncated) break;
           }

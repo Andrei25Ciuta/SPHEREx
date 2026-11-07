@@ -8,7 +8,7 @@
 // (RA*cos(dec) and Dec, arcsec/yr), and which candidates are not in the catalogue?
 // Prints a Markdown report (paste it into docs/VALIDATION.md).
 
-import { detectSources, findMovers, describeMover, matchKnownObject, passIndices } from "../frontend/js/features/movers.js";
+import { detectSources, findMovers, findMoversAcrossDetectors, describeMover, matchKnownObject, passIndices, moverPositionAtMjd, trackSupport } from "../frontend/js/features/movers.js";
 import { fetchCatalogue, catalogueTracks, totalMotion } from "../frontend/js/features/catalogue.js";
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) => (a.startsWith("--") ? [...acc, [a.slice(2), all[i + 1]]] : acc), []));
@@ -22,10 +22,17 @@ const get = async (url, kind) => {
   return kind === "json" ? r.json() : r.arrayBuffer();
 };
 
-const { frames } = await get(`${api}/api/cutouts?ra=${ra}&dec=${dec}&fov=${fov}&det=${det}`, "json");
+// --det all : D2 and D6 together (the app's "Use all detectors": linking across the detectors, see findMoversAcrossDetectors)
+const detectors = det === "all" ? ["D2", "D6"] : [det];
+const frames = [];
+for (const d of detectors) {
+  const { frames: part } = await get(`${api}/api/cutouts?ra=${ra}&dec=${dec}&fov=${fov}&det=${d}`, "json");
+  for (const f of part) frames.push({ ...f, detector: d });
+}
 if (!frames.length) { console.log("No frames here."); process.exit(0); }
 frames.sort((a, b) => a.mjd - b.mjd);
 const arrays = await Promise.all(frames.map(async (f) => new Float32Array(await get(f.dataUrl, "bin"))));
+const masks = await Promise.all(frames.map(async (f) => (f.maskUrl ? new Uint8Array(await get(f.maskUrl, "bin")) : null)));   // bad pixels (saturated cores)
 const n = Math.round(Math.sqrt(arrays[0].length));
 const scale = frames[0].pixelScaleArcsec;
 const geo = { ra, dec, n, scaleArcsec: scale };
@@ -33,8 +40,17 @@ const passes = passIndices(frames.map((f) => f.mjd)).at(-1) + 1;
 
 // ---- 1) blind detection + linking
 const t0 = performance.now();
-const detected = frames.map((f, k) => ({ mjd: f.mjd, sources: detectSources(arrays[k], n, { sigmaFloor: 1e-9 }) }));
-const { candidates, stats, reason } = findMovers(detected);
+let candidates, stats, reason;
+if (det === "all") {
+  ({ candidates, stats, reason } = findMoversAcrossDetectors(frames.map((f, k) => ({ mjd: f.mjd, detector: f.detector, id: `${f.detector}@${f.mjd}`, grey: arrays[k], mask: masks[k] })), n, { sigmaFloor: 1e-9 }));
+  stats.dotsPerFrame = stats.dotsPerFrame ?? [];
+  stats.stillDots = stats.stillDots ?? 0;
+} else {
+  const detected = frames.map((f, k) => ({ mjd: f.mjd, sources: detectSources(arrays[k], n, { sigmaFloor: 1e-9, mask: masks[k] }) }));
+  // --relaxed 1 : the ORIGINAL rule (half of the images, no false-alarm limit) that gave 3 false candidates on epsilon Indi B / D6
+  const rule = args.relaxed ? { minDetectionFraction: 0.5, maxFalseAlarm: Infinity } : {};
+  ({ candidates, stats, reason } = findMovers(detected, { area: n * n, ...rule }));
+}
 const seconds = ((performance.now() - t0) / 1000).toFixed(1);
 
 // ---- 2) what the catalogue says should be moving here
@@ -55,12 +71,21 @@ if (reason) console.log(`- Search did not run: ${reason}`);
 console.log(`- SIMBAD: ${objects.length} objects around the field${simbadNote ? ` (${simbadNote})` : ""}; ${expected.length} of them move more than 1"/yr across it\n`);
 
 console.log(`## Candidates found (blind): ${described.length}\n`);
-console.log(`| # | speed "/yr | toward | RA*cos(dec) "/yr | Dec "/yr | images | significance | catalogue match |`);
-console.log(`|---|---|---|---|---|---|---|---|`);
+console.log(`| # | speed "/yr | toward | RA*cos(dec) "/yr | Dec "/yr | images | significance | chance lines expected | path support | catalogue match |`);
+console.log(`|---|---|---|---|---|---|---|---|---|---|`);
+// Does the path hold up in EVERY image (S/N at the predicted position, like the app's addSupport)?
+const supportText = (c) => {
+  const idx = c.frameIds ? c.frameIds.map((id) => frames.findIndex((f) => `${f.detector}@${f.mjd}` === id)) : frames.map((_, k) => k);
+  const positions = idx.map((fi, j) => { const q = moverPositionAtMjd(c, frames[fi].mjd), sh = c.shifts?.[j]; return { x: q.x + (sh?.dx ?? 0), y: q.y + (sh?.dy ?? 0) }; });
+  const sup = trackSupport(idx.map((fi) => arrays[fi]), n, positions);
+  const best = Math.max(...sup.snr.filter((v) => v != null));
+  return `${sup.supported} of ${sup.measurable} (S/N up to ${best.toFixed(0)})`;
+};
 described.forEach(({ c, d }, k) => {
   const hit = matchKnownObject(c, geo, objects, { maxDistPx: 3 });
-  console.log(`| ${k + 1} | ${d.speedArcsecPerYear.toFixed(2)} | ${d.compass} | ${d.pmEastArcsecPerYear.toFixed(2)} | ${d.pmNorthArcsecPerYear.toFixed(2)} | ${c.nDet} of ${c.nFrames} | ${c.significance.toFixed(0)} sigma | ${hit ? hit.target.label : "none within 18\""} |`);
+  console.log(`| ${k + 1} | ${d.speedArcsecPerYear.toFixed(2)} | ${d.compass} | ${d.pmEastArcsecPerYear.toFixed(2)} | ${d.pmNorthArcsecPerYear.toFixed(2)} | ${c.nDet} of ${c.nFrames} | ${c.significance.toFixed(0)} sigma | ${c.falseAlarm.toExponential(1)} | ${supportText(c)} | ${hit ? hit.target.label : "none within 18\""} |`);
 });
+if (stats.rejectedByFalseAlarm) console.log(`\n(${stats.rejectedByFalseAlarm} more line(s) were dropped because one or more chance lines like them are expected in the field)`);
 
 console.log(`\n## Catalogued movers in the field (SIMBAD, > 1"/yr): ${expected.length}\n`);
 console.log(`| object | catalogue "/yr (RA*cos dec, Dec) | recovered? | measured "/yr (RA*cos dec, Dec) | difference "/yr |`);

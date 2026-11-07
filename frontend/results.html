@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Real-data results – SPHEREx Blink</title>
+  <meta name="description" content="What the SPHEREx Blink detector did on real SPHEREx images: numbers and charts only, with the failures shown next to the successes.">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Oswald:wght@500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css?v=12">
+  <link rel="stylesheet" href="css/results.css?v=1">
+</head>
+<body>
+  <div class="sky-bg" aria-hidden="true"></div>
+  <a class="skip-link" href="#results">Skip to the results</a>
+
+  <header class="rhead">
+    <a class="rhead-logo" href="index.html"><span class="brand-logo" aria-hidden="true"></span><span>SPHEREx Blink</span></a>
+    <nav aria-label="Pages"><a href="index.html">&larr; Back to the app</a></nav>
+  </header>
+
+  <main id="results" class="rmain">
+    <section class="info-box rintro" aria-labelledby="results-title">
+      <p class="info-kicker">Real SPHEREx data &middot; numbers only</p>
+      <h1 id="results-title">What the detector did on real images</h1>
+      <p class="rlead">On 7 November 2026 the detector of this app was run on <strong><span data-n="data.files"></span> real SPHEREx cutouts</strong>
+        (<span data-n="data.megabytes"></span> MB) of <span data-n="data.fields"></span> sky patches. This page shows what came out,
+        <strong>the failures next to the successes</strong>.</p>
+      <p class="rnotice"><strong>No SPHEREx image or pixel is published on this page.</strong> The images stay on the author's computer; only
+        numbers measured from them are shown. Every number is copied from <a href="https://github.com/mateibut/SPHEREx/blob/main/docs/VALIDATION.md">docs/VALIDATION.md</a>,
+        which gives the command that produced it. The charts on the rest of the site (blink, difference, spectrum) run on <strong>synthetic</strong> data unless the backend is connected.</p>
+      <ul class="stats" aria-label="Headline numbers">
+        <li><b><span data-n="summary.recovered" data-fmt="ofn"></span></b><span>blind runs recovered the known fast mover</span></li>
+        <li><b><span data-n="summary.minDifference" data-fmt="fixed:2"></span>&ndash;<span data-n="summary.maxDifference" data-fmt="fixed:2"></span>″/yr</b><span>distance from the catalogue motion</span></li>
+        <li><b><span data-n="arosa.movedArcsec"></span>″</b><span>an asteroid moved in <span data-n="arosa.hours"></span> hours, seen in two images</span></li>
+        <li><b><span data-n="makemake.fitAU" data-fmt="fixed:2"></span> AU</b><span>Makemake from a fit, against <span data-n="makemake.horizonsAU" data-fmt="fixed:2"></span> from the ephemeris</span></li>
+        <li><b><span data-n="makemake.blind.foundTheBody"></span> of <span data-n="makemake.blind.candidates"></span></b><span>candidates of the blind Planet X search were Makemake</span></li>
+      </ul>
+    </section>
+
+    <p id="results-status" class="rstatus" role="status">Loading the numbers…</p>
+    <noscript><p class="rstatus">This page draws its charts with JavaScript. The same numbers are in <a href="https://github.com/mateibut/SPHEREx/blob/main/docs/VALIDATION.md">docs/VALIDATION.md</a>.</p></noscript>
+
+    <!-- 1 -->
+    <section class="panel rsec" aria-labelledby="r1">
+      <h2 id="r1">1. A blind search for fast movers</h2>
+      <p>The detector (<em>Find movers</em>) was <strong>not told what to look for</strong>. Afterwards its candidates were compared with SIMBAD.
+        Each field has exactly one catalogued fast mover: Barnard's Star (10.4″ a year) and Epsilon Indi B (4.7″ a year).
+        The chart shows how far the measured motion is from the catalogue motion.</p>
+      <figure class="rfig">
+        <figcaption>Distance of the measured motion from the catalogue motion</figcaption>
+        <div data-chart="moversDifference"></div>
+      </figure>
+      <p><strong>Both objects were found in every run, and nothing else was reported</strong> (no candidate without a catalogue match).
+        The differences are 0.03&ndash;0.13 pixel per year. Searching both detectors together gave the smallest difference for each star
+        (<span data-n="movers.runs.2.difference" data-fmt="fixed:2"></span> and <span data-n="movers.runs.5.difference" data-fmt="fixed:2"></span>″/yr).
+        The two D6 differences got a little worse than in an earlier version of the code; that is in VALIDATION.md too.</p>
+    </section>
+
+    <!-- 2 -->
+    <section class="panel rsec" aria-labelledby="r2">
+      <h2 id="r2">2. How many of the lines are chance?</h2>
+      <p>A candidate is a line through dots in several images. In a crowded field some lines happen by chance, so the detector
+        estimates how many lines <em>this good</em> the dots of that field would make by chance, and keeps a candidate only if that number is below 1.
+        Epsilon Indi B in D6 shows why: with the first version of the rule it listed the real star <strong>and three false lines</strong>.</p>
+      <figure class="rfig">
+        <figcaption>Lines expected by chance, for the kept lines and for the false lines of the original rule</figcaption>
+        <div data-chart="chanceLines"></div>
+      </figure>
+      <p>The real lines have at most <span data-n="movers.runs.4.chanceLines" data-fmt="chance"></span> chance lines expected; the three false ones about
+        <span data-n="movers.originalRule.falseChanceLines.0" data-fmt="chance"></span> each. The false ones are also supported by dots in only 2&ndash;3 of the images
+        where the position could be measured, the real ones in all of them.</p>
+      <p class="rcaveat"><strong>Not an independent test.</strong> The rule was tightened <em>after</em> this failure was seen on these images. A new field would be needed to test it.</p>
+    </section>
+
+    <!-- 3 -->
+    <section class="panel rsec" aria-labelledby="r3">
+      <h2 id="r3">3. A bright star and the bad-pixel mask</h2>
+      <p>Barnard's Star is so bright that the core of its image is flagged as saturated in every exposure. The centre of a partly flagged core
+        moves from date to date, which looks like a wrong proper motion. Fitting the star only to the unflagged pixels fixed it.</p>
+      <figure class="rfig">
+        <figcaption>Barnard's Star in D2: distance from the catalogue motion</figcaption>
+        <div data-chart="barnardMask"></div>
+      </figure>
+      <p class="rcaveat"><strong>A fix, not a test.</strong> It was designed after seeing the large error on the same images. What argues against tuning: it does nothing for an
+        unsaturated star, and synthetic tests cover it.</p>
+    </section>
+
+    <!-- 4 -->
+    <section class="panel rsec" aria-labelledby="r4">
+      <h2 id="r4">4. Are the brightnesses on the right scale?</h2>
+      <p>For isolated, unsaturated stars the measured flux (a small aperture, in Jansky) was divided by the flux expected from the star's 2MASS or AllWISE magnitude at the wavelength of that image.</p>
+      <figure class="rfig">
+        <figcaption>Measured flux divided by catalogue flux</figcaption>
+        <div data-chart="jansky"></div>
+      </figure>
+      <p>The scale is right <strong>to within about 10 %</strong>. A ratio a little below 1 is expected because the small aperture catches only part of a star's light.
+        D6 sits lower than D2 in both fields (<span data-n="jansky.1.median" data-fmt="fixed:3"></span> against <span data-n="jansky.0.median" data-fmt="fixed:3"></span>, and
+        <span data-n="jansky.3.median" data-fmt="fixed:3"></span> against <span data-n="jansky.2.median" data-fmt="fixed:3"></span>).
+        This is not an absolute calibration, and the catalogue zero points were written from memory in the script.</p>
+    </section>
+
+    <!-- 5 -->
+    <section class="panel rsec" aria-labelledby="r5">
+      <h2 id="r5">5. An asteroid that moved between two images</h2>
+      <p>The main-belt asteroid Arosa (V = 14.6) lies in two images of the same survey pass, <span data-n="arosa.hours"></span> hours apart.
+        The ephemeris service SkyBoT says where it is at each time. The chart shows the flux at those two positions in each image.</p>
+      <figure class="rfig">
+        <figcaption>Flux at the positions where Arosa is expected</figcaption>
+        <div data-chart="arosa"></div>
+      </figure>
+      <p>The source is at the predicted position in each image and <strong>absent from the other</strong>: it moved <span data-n="arosa.movedArcsec"></span>″ in
+        <span data-n="arosa.hours"></span> hours (<span data-n="arosa.arcsecPerHour" data-fmt="fixed:1"></span>″ an hour; SkyBoT says <span data-n="arosa.skybotArcsecPerHour" data-fmt="fixed:1"></span>″).
+        Its flux is the same at the two wavelengths, as expected of a sunlit rock, and its centre is <span data-n="arosa.offsetArcsec" data-fmt="fixed:1"></span>″ from the predicted position.
+        It is not the brightest source of the field, which is why the proof of motion matters.</p>
+    </section>
+
+    <!-- 6 -->
+    <section class="panel rsec" aria-labelledby="r6">
+      <h2 id="r6">6. WISE 0855, the namesake object</h2>
+      <p>WISE 0855 is the coldest known brown dwarf and far too faint to show as a dot in one exposure, so a blind search cannot find it.
+        The weaker question: is there flux at the position its catalogue motion predicts, when all the images are added up?
+        The same stack was made at 16 control places (the same path shifted 40 and 60 arcseconds), where nothing is expected.</p>
+      <figure class="rfig">
+        <figcaption>D6 (4.5&ndash;5.0 &micro;m): stacked flux along the path, and at 16 control places</figcaption>
+        <div data-chart="wiseD6"></div>
+      </figure>
+      <p><strong>Suggestive, not a detection.</strong> The stack is <span data-n="wise0855.D6.stack" data-fmt="fixed:3"></span> mJy, which is
+        <span data-n="wise0855.D6.timesRobust"></span> times the robust scatter of the controls, but it rests on <span data-n="wise0855.D6.unflagged" data-fmt="ofn"></span> images (two flagged ones were left out and would push in opposite directions),
+        and one control sits on a field star (+4.81 mJy, off the chart), which makes the plain scatter of the controls so large that the target would be only 0.1 &sigma;. The significance depends on how the controls are chosen.</p>
+      <figure class="rfig">
+        <figcaption>D2 (1.1&ndash;1.6 &micro;m): the same test</figcaption>
+        <div data-chart="wiseD2"></div>
+      </figure>
+      <p><strong>D2 is not WISE 0855.</strong> At 1 &micro;m this object is thought to be millions of times fainter than what was measured (a magnitude quoted from memory, to be checked).
+        The flux belongs to <span data-n="wise0855.D2.blame"></span>.
+        The app now warns when a second source sits within the measuring aperture.</p>
+      <div data-chart="wiseImages"></div>
+    </section>
+
+    <!-- 7 -->
+    <section class="panel rsec" aria-labelledby="r7">
+      <h2 id="r7">7. Planet X mode on a real dwarf planet</h2>
+      <p>Planet X mode looks for a body so far away that it swings across the sky as the Earth goes round the Sun, and reads its distance from that swing.
+        Makemake (a dwarf planet at 52 AU) is in <span data-n="makemake.imageCount"></span> real images. Each cutout was centred on the position the ephemeris gives, and the ephemeris was otherwise used only for grading.</p>
+      <figure class="rfig">
+        <figcaption>Distance of Makemake from the Earth-parallax fit, against the ephemeris</figcaption>
+        <div data-chart="makemake"></div>
+      </figure>
+      <p><strong>When told where to look, the fit works</strong>: <span data-n="makemake.fitAU" data-fmt="fixed:2"></span> AU against <span data-n="makemake.horizonsAU" data-fmt="fixed:2"></span> AU, with the residuals at most
+        <span data-n="makemake.maxResidualArcsec"></span>″ (one pixel). It tests the Earth's position, the parallax formula and the geometry. But only <span data-n="makemake.degreesOfFreedom"></span> degrees of freedom check the fit, and the dots were chosen with the ephemeris.</p>
+      <p class="rcaveat"><strong>The blind search failed.</strong> Run with no ephemeris on all <span data-n="makemake.blind.dots"></span> dots of the cutouts, it returned
+        <span data-n="makemake.blind.candidates"></span> candidates at 52&ndash;54 AU, and <strong><span data-n="makemake.blind.foundTheBody"></span> of them is Makemake</strong>.
+        The cutouts are centred on the body, so any dot near a centre follows its parallax track, and the body was detected in only <span data-n="makemake.detections"></span> of <span data-n="makemake.imageCount"></span> images, which lets chance
+        combinations fit as well. A fair test needs cutouts not centred on the body and more detections. <strong>The blind Planet X search has not been shown to work on real data.</strong></p>
+    </section>
+
+    <!-- 8 -->
+    <section class="panel rsec" aria-labelledby="r8">
+      <h2 id="r8">8. What this does not show</h2>
+      <ul class="rlimits" data-limits></ul>
+      <h3>Reproduce it</h3>
+      <p>The commands are in <a href="https://github.com/mateibut/SPHEREx/blob/main/docs/VALIDATION.md">docs/VALIDATION.md</a>. They need the real cutouts, which are not published
+        (they are fetched from IRSA by <code>backend/scripts/fetch_real_sample.py</code>), and a backend that serves only those files.</p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>Data: SPHEREx, a NASA mission (a joint project of JPL and Caltech), distributed by the NASA/IPAC Infrared Science Archive (IRSA). Quick-release DOIs:
+      <a href="https://doi.org/10.26131/IRSA629">10.26131/IRSA629</a> (QR1), <a href="https://doi.org/10.26131/IRSA652">10.26131/IRSA652</a> (QR2),
+      <a href="https://doi.org/10.26131/IRSA662">10.26131/IRSA662</a> (QR3); which release each image comes from has not been matched yet.
+      Catalogues: 2MASS and AllWISE via IRSA; SIMBAD (CDS); ephemerides: JPL Horizons, SkyBoT (IMCCE).
+      Built for NASA Space Apps Challenge 2026, with AI assistance (Claude Code). <a href="index.html">Back to the app</a></p>
+  </footer>
+
+  <script type="module" src="js/results.js"></script>
+</body>
+</html>

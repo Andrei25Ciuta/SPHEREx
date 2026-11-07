@@ -58,7 +58,7 @@ h1, h2, h3 { font-family: var(--font-head); margin: 0; line-height: 1.2; }
 
 kbd {
   font-family: var(--font-body);
-  font-size: .8em;
+  font-size: max(.8em, 12px);
   padding: .1em .45em;
   border: 1px solid var(--border);
   border-bottom-width: 2px;
@@ -160,6 +160,8 @@ input[type="range"] {
   -webkit-appearance: none; appearance: none;
   width: 100%; height: 6px; border-radius: 999px; cursor: pointer;
   background: var(--accent);
+  /* the visible track stays 6 px, but the touch/click target is 24 px tall (WCAG 2.5.8) */
+  box-sizing: content-box; padding: 9px 0; background-clip: content-box;
 }
 input[type="range"]:disabled { opacity: .35; cursor: not-allowed; }
 input[type="range"]::-webkit-slider-thumb {
@@ -326,7 +328,7 @@ output { font-weight: 600; color: var(--accent); }
   padding: .7rem .8rem; border-radius: var(--radius-sm);
   background: var(--field); border: 1px solid var(--border);
 }
-.meta dt { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+.meta dt { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
 .meta dd { margin: .2rem 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* ---------- 6. Utilities, responsive, motion ---------- */
@@ -430,7 +432,7 @@ output { font-weight: 600; color: var(--accent); }
 .overview-item[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .overview-item canvas { width: 100%; aspect-ratio: 1; image-rendering: pixelated; border-radius: 6px; background: #000; }
 .overview-item .ov-name { font-weight: 600; font-size: .82rem; }
-.overview-item .ov-sub { font-size: .72rem; color: var(--text-muted); }
+.overview-item .ov-sub { font-size: .8rem; color: var(--text-muted); }
 
 /* Second row: full-width panels */
 .measure, .context { grid-column: 1 / -1; }
@@ -451,7 +453,14 @@ output { font-weight: 600; color: var(--accent); }
 .context-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: .6rem 0; }
 .context-controls label { font-size: .9rem; }
 .context-controls select { width: auto; min-width: 220px; }
-.skymap { width: 100%; height: 440px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+.skymap { position: relative; width: 100%; height: 440px; border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border); }
+/* Coordinates of the cursor (or of the map centre) with, in brackets, the country that sky point is straight above (skyGeo.js) */
+.sky-readout {
+  position: absolute; left: .5rem; bottom: 2.6rem; z-index: 5; max-width: calc(100% - 1rem); pointer-events: none;   /* above Aladin's own zoom / field-of-view control (bottom left) */
+  padding: .3rem .6rem; border-radius: 8px; border: 1px solid var(--border);
+  background: rgb(14 28 34 / .86); color: var(--text); font-size: .8rem; line-height: 1.35; font-variant-numeric: tabular-nums;
+}
+.sky-readout:empty { display: none; }
 
 /* Full-screen map: the frame (controls + map + status line) fills the screen.
    `is-fullscreen` = real Fullscreen API or CSS fallback; `is-fallback` = CSS fallback only (see fullscreen.js). */
@@ -489,6 +498,7 @@ html.fs-locked { overflow: hidden; }
 .movers-head { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem .9rem; }
 .movers-head .btn-primary { width: auto; padding: .55rem 1.1rem; }
 .movers-status { flex: 1 1 14rem; margin: 0; font-size: .85rem; color: var(--text-muted); }
+.movers-all { font-size: .85rem; }
 .mover-list { list-style: none; margin: .7rem 0 0; padding: 0; display: grid; gap: .4rem; }
 .mover-item {
   display: grid; grid-template-columns: auto 1fr; column-gap: .75rem; align-items: baseline;
@@ -499,7 +509,7 @@ html.fs-locked { overflow: hidden; }
 }
 .mover-item:hover { border-color: var(--accent); background: rgb(var(--accent-rgb) / .12); }
 .mover-item[aria-pressed="true"] { border-color: var(--accent); background: rgb(var(--accent-rgb) / .22); }
-.mover-rank { grid-row: 1 / span 2; font-family: var(--display); font-weight: 700; font-size: 1.15rem; color: var(--accent-hi); }
+.mover-rank { grid-row: 1 / span 2; font-family: var(--display); font-weight: 700; font-size: 1.15rem; color: #FF9A86; }   /* lighter than --accent-hi: 4.48:1 was just under the 4.5:1 minimum */
 .mover-main { font-weight: 600; }
 .mover-sub { font-size: .8rem; color: var(--text-muted); }
 .mover-detail {
@@ -510,6 +520,15 @@ html.fs-locked { overflow: hidden; }
 .mover-detail p { margin: 0 0 .55rem; }
 .mover-detail .btn + .btn { margin-left: .4rem; }
 .mover-export { margin-top: .6rem; display: flex; flex-wrap: wrap; gap: .5rem; }
+summary { padding-block: .4rem; cursor: pointer; }          /* a 21 px tall summary is a small target */
+
+/* Phones, tablets and projectors with a touch screen: every control at least 44 px high (the usual comfortable touch size) */
+@media (pointer: coarse) {
+  .btn, .btn-small, .chip, .mover-item, .hero-nav a, summary { min-height: 44px; }
+  .check { min-height: 44px; }
+  .check input { width: 22px; height: 22px; }
+  input[type="range"] { padding: 18px 0; }                  /* 6 px track inside a 42 px band */
+}
 
 /* Guided tour (js/features/tour.js): a spotlight with a huge shadow dims the rest of the page */
 .tour-spot {
@@ -619,7 +638,7 @@ body::before {
    10. Hero extras (nav, scroll ring) and info sections
    ========================================================= */
 .hero-nav { display: flex; gap: 1.4rem; font-size: .9rem; }
-.hero-nav a { color: var(--text); text-decoration: none; font-weight: 500; }
+.hero-nav a { color: var(--text); text-decoration: none; font-weight: 500; display: inline-block; padding: .4rem .35rem; }
 .hero-nav a:hover { color: var(--accent-hi); text-decoration: underline; }
 .hero-scroll {
   position: absolute; right: clamp(1rem, 7vw, 6rem); bottom: 4.2rem; width: 104px; height: 104px;

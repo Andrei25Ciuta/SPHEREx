@@ -1,5 +1,5 @@
 // Tests for frontend/js/features/movers.js ("Find movers").  Run: node scratch/test_movers.mjs
-import { detectSources, findMovers, findMoversInImages, describeMover, matchKnownObject } from "../frontend/js/features/movers.js";
+import { detectSources, findMovers, findMoversInImages, findMoversAcrossDetectors, describeMover, matchKnownObject, binomialTail, apertureSnr, trackSupport, blendWarning } from "../frontend/js/features/movers.js";
 import { mulberry32, renderPixels, stretchAsinh, observe } from "../frontend/js/data/mockSource.js";
 import { TARGETS, positionAtEpoch } from "../frontend/js/targets.js";
 
@@ -242,9 +242,170 @@ for (const id of ["barnard", "wise0855", "epsindb"]) {
   });
   const three = make([0, 2, 4]), all = make([0, 1, 2, 3, 4, 5]), four = make([0, 1, 2, 4]);
   check("a line through dots of only 3 of 6 images is not reported by default", findMovers(three).candidates.length === 0);
-  check("... but it is when the rule is relaxed to half of the images (the old default)", findMovers(three, { minDetectionFraction: 0.5 }).candidates.length === 1);
+  const relaxed = findMovers(three, { minDetectionFraction: 0.5, maxFalseAlarm: Infinity });
+  check("... but it is when both rules are relaxed (half of the images, no false-alarm limit)", relaxed.candidates.length === 1);
   check("a real mover seen in all 6 images, or in 4 of 6, is reported", findMovers(all).candidates.length === 1 && findMovers(four).candidates.length === 1,
     `${findMovers(all).candidates.length} / ${findMovers(four).candidates.length}`);
+  // the false-alarm number: expected chance lines like this one in the whole field
+  const fa6 = findMovers(all).candidates[0].falseAlarm, fa4 = findMovers(four).candidates[0].falseAlarm, fa3 = relaxed.candidates[0].falseAlarm;
+  check("false alarm: a line in all 6 images is far less likely by chance than one in 4, and 4 less than 3", fa6 < fa4 && fa4 < fa3 && fa6 < 1e-3, `${fa6.toExponential(1)} < ${fa4.toExponential(1)} < ${fa3.toExponential(1)}`);
+  check("false alarm: the candidates are listed most-certain first", (() => {
+    const two = findMovers([...all.map((f, k) => ({ mjd: f.mjd, sources: [...f.sources, { x: 5 + k * 6, y: 40 - k * 3, snr: 20 }] }))], { maxFalseAlarm: Infinity }).candidates;
+    return two.length >= 1 && two.every((c, i) => i === 0 || two[i - 1].falseAlarm <= c.falseAlarm);
+  })());
+  check("false alarm: a limit of 1e-30 rejects everything and says how many it rejected", (() => {
+    const r = findMovers(all, { maxFalseAlarm: 1e-30 });
+    return r.candidates.length === 0 && r.stats.rejectedByFalseAlarm === 1;
+  })());
+}
+
+// ---------------------------------------------------------------- 6a) several detectors: linked together AND each alone
+{
+  const stars = [[10, 12], [40, 20], [22, 44], [35, 8], [5, 30], [45, 40], [28, 26], [15, 5]];
+  const pass = [60800, 60983, 61168];
+  // frames of two detectors, interleaved by date; the mover (1.7, -0.9 px/yr) is seen only where `sees(detector, passIndex)` says so
+  const build = (sees) => {
+    const frames = [];
+    pass.forEach((mjd0, p) => {
+      for (const [d, off] of [["A", 0], ["B", 1.5]]) {
+        const mjd = mjd0 + off, years = (mjd - 60985) / 365.25;
+        const sources = stars.map(([x, y]) => ({ x, y, snr: 20 }));
+        if (sees(d, p)) sources.push({ x: 25 + 1.7 * years, y: 20 - 0.9 * years, snr: 20 });
+        frames.push({ mjd, detector: d, id: `${d}@${mjd}`, sources });
+      }
+    });
+    return frames;
+  };
+  const run = (frames, opts = {}) => {
+    // findMoversAcrossDetectors works from grey images; here we feed the dot lists through the same linking code instead
+    const out = [];
+    const sets = [{ name: "all detectors", list: frames }, ...["A", "B"].map((d) => ({ name: d, list: frames.filter((f) => f.detector === d) }))];
+    for (const s of sets) { const r = findMovers(s.list.map(({ mjd, sources }) => ({ mjd, sources })), opts); out.push({ name: s.name, reason: r.reason, n: r.candidates.length }); }
+    return out;
+  };
+  // the mover is seen by A in passes 0 and 1 and by B in passes 1 and 2: each detector has only 2 passes with it; together 4 of 6 images
+  const gain = run(build((d, p) => (d === "A" ? p <= 1 : p >= 1)));
+  check("two detectors that each see the mover in 2 passes: alone they find nothing, together they find it",
+    gain.find((g) => g.name === "all detectors").n === 1 && gain.filter((g) => g.name !== "all detectors").every((g) => g.n === 0), JSON.stringify(gain));
+  // a mover only A sees (e.g. a brown dwarf in the short bands): together it is in 3 of 6 images (too few); A alone finds it
+  const only = run(build((d) => d === "A"));
+  check("a mover that only one detector sees: all together is too few images, that detector alone finds it",
+    only.find((g) => g.name === "all detectors").n === 0 && only.find((g) => g.name === "A").n === 1 && only.find((g) => g.name === "B").n === 0, JSON.stringify(only));
+}
+
+// ---------------------------------------------------------------- 6a2) findMoversAcrossDetectors itself (grey images in, merged list out)
+{
+  const n = 50, mjds = [[60800, "A"], [60801.5, "B"], [60983, "A"], [60984.5, "B"], [61168, "A"], [61169.5, "B"]];
+  const stars = [[10, 12], [40, 20], [22, 44], [35, 8], [5, 30], [45, 40], [28, 26], [15, 5]];
+  const image = (mjd, withMover) => {
+    const img = new Float32Array(n * n);
+    const rng = mulberry32(Math.round(mjd * 10));
+    for (let i = 0; i < img.length; i++) img[i] = (rng() - 0.5) * 0.5;
+    const star = (x, y, a) => { for (let yy = 0; yy < n; yy++) for (let xx = 0; xx < n; xx++) { const dx = xx + 0.5 - x, dy = yy + 0.5 - y; img[yy * n + xx] += a * Math.exp(-(dx * dx + dy * dy) / (2 * 1.1 * 1.1)); } };
+    for (const [x, y] of stars) star(x, y, 40);
+    if (withMover) { const years = (mjd - 60985) / 365.25; star(25 + 1.7 * years, 20 - 0.9 * years, 40); }
+    return img;
+  };
+  const frames = mjds.map(([mjd, detector]) => ({ mjd, detector, id: `${detector}@${mjd}`, grey: image(mjd, true), mask: null }));
+  const r = findMoversAcrossDetectors(frames, n, { sigmaFloor: 1e-9 });
+  check("across detectors: one candidate, found once although 'all detectors' and 'A alone' ... may both see it (deduplicated)", r.candidates.length === 1, `${r.candidates.length} candidate(s)`);
+  check("across detectors: the candidate knows its images and where it was found", r.candidates[0].frameIds.length >= 3 && r.candidates[0].frameIds.every((id) => /^[AB]@/.test(id)) && typeof r.candidates[0].foundIn === "string", `${r.candidates[0].foundIn}, ${r.candidates[0].frameIds.length} images`);
+  check("across detectors: it lists which sets were searched", JSON.stringify(r.stats.searchedSets) === JSON.stringify(["all detectors", "A", "B"]));
+  const one = findMoversAcrossDetectors(frames.filter((f) => f.detector === "A"), n, { sigmaFloor: 1e-9 });
+  check("a single detector: just that search (no 'all detectors' set)", JSON.stringify(one.stats.searchedSets) === JSON.stringify(["A"]) && one.candidates.length === 1);
+  const few = findMoversAcrossDetectors(frames.slice(0, 2), n, { sigmaFloor: 1e-9 });
+  check("too few images: no candidates and a reason", few.candidates.length === 0 && /3 images|survey passes/.test(few.reason ?? ""), few.reason);
+}
+
+// ---------------------------------------------------------------- 6a3) does the path hold up in every image? (apertureSnr, trackSupport)
+{
+  const n = 60;
+  const image = (seed, stars) => {
+    const rng = mulberry32(seed), img = new Float32Array(n * n);
+    for (let i = 0; i < img.length; i++) img[i] = (rng() - 0.5) * 0.6;
+    for (const [x, y, a] of stars) for (let yy = 0; yy < n; yy++) for (let xx = 0; xx < n; xx++) { const dx = xx + 0.5 - x, dy = yy + 0.5 - y; img[yy * n + xx] += a * Math.exp(-(dx * dx + dy * dy) / (2 * 1.1 * 1.1)); }
+    return img;
+  };
+  const one = apertureSnr(image(1, [[30, 30, 20]]), n, 30, 30);
+  check("aperture: a star of height 20 over noise 0.17 is a huge S/N at its position, and about nothing 15 px away", one.snr > 100 && Math.abs(apertureSnr(image(1, [[30, 30, 20]]), n, 45, 30).snr) < 5, `${one.snr.toFixed(0)}`);
+  check("aperture: near the edge or in a hole it gives null, not a made-up number", apertureSnr(image(1, []), n, 1, 1) === null && apertureSnr(new Float32Array(n * n).fill(NaN), n, 30, 30) === null);
+  const bright = [[30.4, 20, 30]];                                         // a bright neighbour 8 px away must not inflate the noise (robust ring scatter)
+  check("aperture: a bright neighbour in the ring does not hide the target", apertureSnr(image(2, [[30, 30, 8], [30, 37, 60]]), n, 30, 30).snr > 20);
+  // a real mover (in every image) vs a chance line that only has dots in 3 of 6 images
+  const path = (k) => ({ x: 20 + 4 * k, y: 30 });
+  const real = Array.from({ length: 6 }, (_, k) => image(10 + k, [[path(k).x, path(k).y, 12]]));
+  const chance = Array.from({ length: 6 }, (_, k) => image(20 + k, k % 2 ? [[path(k).x, path(k).y, 12]] : []));
+  const sReal = trackSupport(real, n, real.map((_, k) => path(k))), sChance = trackSupport(chance, n, chance.map((_, k) => path(k)));
+  check("support: a real mover is on its path in all 6 images", sReal.supported === 6 && sReal.measurable === 6 && sReal.fraction === 1, `${sReal.supported}/${sReal.measurable}`);
+  check("support: a chance line with dots in 3 of 6 images is on its path in only 3", sChance.supported === 3 && sChance.fraction === 0.5, `${sChance.supported}/${sChance.measurable}`);
+  const bad = trackSupport(real, n, real.map((_, k) => ({ x: path(k).x, y: 50 })));
+  check("support: the same images measured at the wrong path give none", bad.supported === 0, `${bad.supported}`);
+  const outside = trackSupport(real, n, real.map(() => ({ x: 1, y: 1 })));
+  check("support: positions off the image are not counted as measured", outside.measurable === 0 && outside.fraction === 0);
+  // faint in one image (a colour effect) but the others are strong: the faint one (still above S/N 5 and 10 % of the best) counts
+  const faintOne = real.map((img, k) => (k === 2 ? image(30, [[path(2).x, path(2).y, 2.4]]) : img));
+  check("support: one faint image (a colour effect) still counts as support when above both limits", trackSupport(faintOne, n, faintOne.map((_, k) => path(k))).supported === 6);
+}
+
+// ---------------------------------------------------------------- 6a4) a neighbour inside the measuring circle (blend warning)
+{
+  const path = (k) => ({ x: 20 + 4 * k, y: 30 });
+  const own = (k) => ({ x: path(k).x + 0.2, y: path(k).y - 0.1 });                 // the candidate's own dot, 0.2 px from the prediction
+  const none = blendWarning([0, 1, 2, 3].map(path), [0, 1, 2, 3].map((k) => [own(k), { x: 5, y: 5 }]));
+  check("blend: the candidate's own dot is not a neighbour; a far star is not in range", none.blended === 0 && none.nearestPx === null && none.distances.every((d) => d > 2.5));
+  const star = (k) => ({ x: path(k).x + 1.2, y: path(k).y });                      // a star 1.2 px (7") from the path, in every image
+  const blended = blendWarning([0, 1, 2, 3].map(path), [0, 1, 2, 3].map((k) => [own(k), star(k)]));
+  check("blend: a star 1.2 px (7 arcsec) from the path in every image is reported", blended.blended === 4 && Math.abs(blended.nearestPx - 1.2) < 0.05, JSON.stringify(blended));
+  const some = blendWarning([0, 1, 2, 3].map(path), [0, 1, 2, 3].map((k) => (k >= 2 ? [own(k), star(k)] : [own(k)])));
+  check("blend: counts only the images where the neighbour is there", some.blended === 2 && some.distances[0] === null);
+  check("blend: a star 4 px away (24 arcsec) is outside the measuring circle", blendWarning([path(0)], [[{ x: path(0).x + 4, y: path(0).y }]]).blended === 0);
+  check("blend: an image with no dots does not crash", blendWarning([path(0), path(1)], [[], undefined]).blended === 0);
+}
+
+// ---------------------------------------------------------------- 6b) binomial tail (the false-alarm arithmetic)
+{
+  check("binomial tail: P(X >= 1) for 4 trials at p = 0.1 is 1 - 0.9^4", Math.abs(binomialTail(4, 0.1, 1) - (1 - 0.9 ** 4)) < 1e-12);
+  check("binomial tail: P(X >= 4) for 4 trials is p^4, with no rounding loss for tiny values", Math.abs(binomialTail(4, 0.02, 4) / 0.02 ** 4 - 1) < 1e-9);
+  check("binomial tail: k <= 0 is certain, k > trials is impossible, p = 0 is impossible", binomialTail(5, 0.3, 0) === 1 && binomialTail(5, 0.3, 6) === 0 && binomialTail(5, 0, 1) === 0);
+  check("binomial tail: P(X >= 2) for 10 trials at 0.5 is 1013/1024", Math.abs(binomialTail(10, 0.5, 2) - 1013 / 1024) < 1e-12);
+}
+
+// ---------------------------------------------------------------- 6c) a saturated star: fit on the good pixels (real Barnard's Star, detector D2)
+{
+  // A star of width 1.3 px whose core is flagged: those pixels hold garbage that differs from date to date (overflow). The plain
+  // centroid follows the garbage; the fit on the unflagged pixels does not. Real data: 3.7 -> 0.3 arcsec/yr off the catalogue.
+  const n = 60, trueX = 30.3, trueY = 25.7;
+  const make = (seed, flagCore) => {
+    const rng = mulberry32(seed);
+    const img = new Float32Array(n * n), mask = new Uint8Array(n * n);
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const ex = x + 0.5 - trueX, ey = y + 0.5 - trueY;
+      img[y * n + x] = 1000 * Math.exp(-(ex * ex + ey * ey) / (2 * 1.3 * 1.3)) + (rng() - 0.5) * 0.4;
+      if (flagCore && ex * ex + ey * ey <= 2.6 * 2.6) { mask[y * n + x] = 1; img[y * n + x] = rng() * 700; }       // overflow: garbage
+    }
+    return { img, mask };
+  };
+  let plainErr = 0, maskedErr = 0, uncompromisedDiff = 0;
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const { img, mask } = make(seed, true);
+    const plain = detectSources(img, n, { sigmaFloor: 1e-9 }).find((s) => Math.hypot(s.x - trueX, s.y - trueY) < 4);
+    const fitted = detectSources(img, n, { sigmaFloor: 1e-9, mask }).find((s) => Math.hypot(s.x - trueX, s.y - trueY) < 4);
+    plainErr += Math.hypot(plain.x - trueX, plain.y - trueY) / 6;
+    maskedErr += Math.hypot(fitted.x - trueX, fitted.y - trueY) / 6;
+    const clean = make(seed, false);
+    clean.mask[(25) * n + 30] = 1;                                                   // ONE flagged pixel in the core: not compromised
+    const a = detectSources(clean.img, n, { sigmaFloor: 1e-9 }).find((s) => Math.hypot(s.x - trueX, s.y - trueY) < 4);
+    const b = detectSources(clean.img, n, { sigmaFloor: 1e-9, mask: clean.mask }).find((s) => Math.hypot(s.x - trueX, s.y - trueY) < 4);
+    uncompromisedDiff = Math.max(uncompromisedDiff, Math.hypot(a.x - b.x, a.y - b.y));
+  }
+  check("saturated star with garbage in the flagged core: the plain centroid is off by more than 0.2 px", plainErr > 0.2, `${plainErr.toFixed(2)} px`);
+  check("... the fit on the good pixels is within 0.05 px of the truth", maskedErr < 0.05, `${maskedErr.toFixed(3)} px`);
+  check("a star with a single flagged core pixel keeps the plain centroid (a fixed-width Gaussian is not the real PSF)", uncompromisedDiff === 0, `${uncompromisedDiff}`);
+  check("no mask given: nothing changes (same positions as before)", (() => {
+    const { img } = make(9, false);
+    const a = detectSources(img, n, { sigmaFloor: 1e-9 }), b = detectSources(img, n, { sigmaFloor: 1e-9, mask: null });
+    return JSON.stringify(a) === JSON.stringify(b);
+  })());
 }
 
 console.log(failed ? `\n${failed} check(s) FAILED` : "\nAll checks passed");

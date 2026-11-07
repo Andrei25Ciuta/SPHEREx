@@ -32,6 +32,11 @@ check("records: the asteroid check says what it found, or that it was not run, o
   && rec[1].asteroid_match === "none within 20 arcsec" && candidateRecords([{ ...linear, asteroids: undefined }], ctx)[0].asteroid_match === "not checked");
 check("records: numbers are rounded to a sensible precision", rec[1].speed_arcsec_per_yr === 10.432 && rec[1].epoch_mjd === 60985.123 && rec[1].significance_sigma === 13);
 check("records: the known object is carried through", rec[1].known_object === "Barnard's Star");
+check("records: path support (images with real flux at the predicted spot) is exported, empty when not measured",
+  candidateRecords([{ ...linear, support: { supported: 5, measurable: 6 } }], ctx)[0].path_support_images === 5 && candidateRecords([{ ...linear, support: { supported: 5, measurable: 6 } }], ctx)[0].path_images === 6
+  && rec[1].path_support_images === null && COLUMNS.includes("path_support_images"));
+check("records: the false-alarm number (expected chance lines) is exported, empty when unknown",
+  candidateRecords([{ ...linear, falseAlarm: 4.2e-15 }], ctx)[0].false_alarm_expected === 4.2e-15 && rec[1].false_alarm_expected === null && COLUMNS.includes("false_alarm_expected"));
 check("CSV: an empty list gives only the header", candidatesToCsv([], ctx).trimEnd() === COLUMNS.join(","));
 check("CSV: NaN is an empty cell, never the word NaN", !candidatesToCsv([{ ...linear, speedArcsecPerYear: NaN, rms: Infinity }], ctx).includes("NaN") && !candidatesToCsv([{ ...linear, rms: Infinity }], ctx).includes("Infinity"));
 

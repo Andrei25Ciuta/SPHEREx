@@ -28,6 +28,29 @@ export function fluxColumn(points) {
 }
 
 /**
+ * How much do neighbouring wavelengths differ? A real object has a spectrum that changes smoothly with wavelength (apart from
+ * a few sharp absorption bands); a chance alignment of unrelated dots has fluxes that jump about. Looks only at unflagged points
+ * with S/N >= minSnr, and at pairs that are next to each other in wavelength and not more than maxGapUm apart.
+ * Returns { kind: "smooth" | "uneven" | "jumpy" | "unknown", step (median relative difference), pairs }.
+ * Real Epsilon Indi B (D2 + D6, 7 Nov 2026): median step 0.16 -> smooth. Experimental: tested on 1 real object.
+ */
+export function spectralSmoothness(points, { maxGapUm = 0.2, minSnr = 5 } = {}) {
+  const column = fluxColumn(points);
+  const usable = points
+    .filter((p) => !p.flagged && p[column] > 0 && p.fluxErr > 0 && p.flux / p.fluxErr >= minSnr)
+    .sort((a, b) => a.wavelengthUm - b.wavelengthUm);
+  const steps = [];
+  for (let i = 1; i < usable.length; i++) {
+    if (usable[i].wavelengthUm - usable[i - 1].wavelengthUm > maxGapUm) continue;
+    const a = usable[i - 1][column], b = usable[i][column];
+    steps.push(Math.abs(a - b) / ((a + b) / 2));
+  }
+  if (steps.length < 4) return { kind: "unknown", step: null, pairs: steps.length };
+  const step = median(steps);
+  return { kind: step < 0.25 ? "smooth" : step < 0.6 ? "uneven" : "jumpy", step, pairs: steps.length };
+}
+
+/**
  * points: [{ wavelengthUm, flux, fluxJy?, flagged? }] measured along the path of an object.
  * Returns { kind, ratio, text, nShort, nLong } with kind in
  * "star" | "neutral" | "red" | "very-red" | "unknown".
@@ -54,8 +77,12 @@ export function colourHint(points) {
   const ratio = s > 0 ? l / s : (l > 0 ? Infinity : 0);
   const shown = Number.isFinite(ratio) ? ratio.toFixed(ratio < 1 ? 2 : 1) : "very large";
   const head = `Colour hint: flux at 4–5 µm divided by flux at 1–2 µm = ${shown}. `;
-  if (ratio >= 10) return { ...base, kind: "very-red", ratio, text: head + "Very red: far brighter at long wavelengths than at short ones. Ordinary stars are never like this; cold brown dwarfs are." };
-  if (ratio >= 1.5) return { ...base, kind: "red", ratio, text: head + "Red: brighter at long wavelengths. A warm asteroid (heat glow) or a cool brown dwarf would look like this." };
-  if (ratio >= 0.3) return { ...base, kind: "neutral", ratio, text: head + "Neutral: flatter than an ordinary hot star. Reflected sunlight, a star with an infrared excess, or a warm brown dwarf (the real pair Epsilon Indi B measured 0.65 here). A cool M dwarf is not far below this range, so do not read it as a classification." };
-  return { ...base, kind: "star", ratio, text: head + "Star-like: it fades toward long wavelengths like an ordinary star." };
+  const smooth = spectralSmoothness(points);
+  const shape = smooth.kind === "unknown" ? ""
+    : ` Between neighbouring wavelengths the flux differs by a median of ${Math.round(100 * smooth.step)} % (${smooth.kind}${smooth.kind === "jumpy" ? ": unrelated dots can look like this, check the path" : ""}).`;
+  const withShape = (kind, text) => ({ ...base, kind, ratio, smoothness: smooth, text: head + text + shape });
+  if (ratio >= 10) return withShape("very-red", "Very red: far brighter at long wavelengths than at short ones. Ordinary stars are never like this; cold brown dwarfs are.");
+  if (ratio >= 1.5) return withShape("red", "Red: brighter at long wavelengths. A warm asteroid (heat glow) or a cool brown dwarf would look like this.");
+  if (ratio >= 0.3) return withShape("neutral", "Neutral: flatter than an ordinary hot star. Reflected sunlight, a star with an infrared excess, or a warm brown dwarf (the real pair Epsilon Indi B measured 0.65 here). A cool M dwarf is not far below this range, so do not read it as a classification.");
+  return withShape("star", "Star-like: it fades toward long wavelengths like an ordinary star.");
 }

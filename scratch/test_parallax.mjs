@@ -148,6 +148,22 @@ function scene(seed, { rho = null, mu = { east: 60, north: -25 }, start = { east
     ordinary += findDistantMovers(scene(seed, { mover: { x: 150 + seed % 7 * 20, y: 180, vx: 1.7, vy: -0.9 } }).frames, GEO).candidates.length;
   }
   check("an ordinary straight-line mover is NOT reported as a parallax body", ordinary === 0, `${ordinary} candidate(s) in 32 fields`);
+  // Rival candidates must be merged ALL the way (found on real Makemake dots: with loose limits, two rivals of a third survived side by side).
+  // Loose limits on a crowded field make many chance candidates; no two of those that remain may share 2 dots (frame + position).
+  {
+    let total = 0, rivalPairs = 0;
+    for (let seed = 300; seed < 316; seed++) {
+      const { candidates } = findDistantMovers(scene(seed, { noiseDots: 40 }).frames, GEO,
+        { minParallaxFraction: 0.4, minPerPass: 1, maxParallaxRmsPx: 1.5, maxRmsPx: 3, matchRadiusPx: 2.5, seedResidualPx: 4, minParallaxSigma: 3, maxEscapeFactor: Infinity });
+      total += candidates.length;
+      for (let a = 0; a < candidates.length; a++) for (let b = a + 1; b < candidates.length; b++) {
+        const keys = new Set(candidates[a].points.map((p) => `${p.frame}:${p.x}:${p.y}`));
+        if (candidates[b].points.filter((p) => keys.has(`${p.frame}:${p.x}:${p.y}`)).length >= 2) rivalPairs++;
+      }
+    }
+    check("rivals are merged completely: no two reported candidates share 2 dots", rivalPairs === 0, `${rivalPairs} rival pair(s) among ${total} candidate(s) in 16 crowded fields`);
+    check("... (and the crowded fields did produce chance candidates, so the check means something)", total >= 3, `${total} candidate(s)`);
+  }
   // the same swing with a drift of 335 arcsec/yr (54 px/yr, inside the search limit) is 3.9 km/s at 500 AU:
   // twice the 1.9 km/s escape speed, so not a body of the Solar System
   const fast = scene(11, { rho: 500, mu: { east: 320, north: -100 } }).frames;
@@ -204,6 +220,57 @@ function scene(seed, { rho = null, mu = { east: 60, north: -25 }, start = { east
     const res = findDistantMovers(detected, { ra: 120, dec: 20, n: plain.size, scaleArcsec: plain.scale });
     check("mock sky: an ordinary field (with its 12 px/yr mover) gives no parallax candidate", res.candidates.length === 0, `${res.candidates.length} candidate(s), ${detected[0].sources.length} dots/image`);
   }
+}
+
+// ---------------------------------------------------------------- 4c) several fields: a body that swings out of one cutout
+{
+  const { canvasToSky } = await import("../frontend/js/geometry.js");
+  const COMMON = { ra: 136.5, dec: 16.6, n: 400, scaleArcsec: 6.19 };            // 400 px = 41 arcmin; at this longitude the swing is the largest
+  const RHO = 400, MU = { east: 40, north: -15 };
+  const START = { x: -40, y: 30 };                                                // where it is on the middle date, from the centre of the plane (not on a tile edge)
+  const origins = [[0, 0], [200, 0], [0, 200], [200, 200]];                       // four 200-px (20 arcmin) cutouts side by side
+  const tileGeo = ([ox, oy]) => { const s = canvasToSky((ox + 100) / 400, (oy + 100) / 400, COMMON); return { ra: s.ra, dec: s.dec, n: 200, scaleArcsec: 6.19 }; };
+  const bodyAt = (mjd) => {                                                       // common-plane pixel of the body on that date
+    const p = parallaxOffsetArcsec(COMMON.ra, COMMON.dec, mjd, MJDREF, RHO), y = (mjd - MJDREF) / 365.25;
+    return { x: 200 + START.x - (MU.east * y + p.east) / COMMON.scaleArcsec, y: 200 + START.y - (MU.north * y + p.north) / COMMON.scaleArcsec };
+  };
+  const mosaic = (seed, { withBody = true, tilesUsed = origins } = {}) => {
+    const rng = mulberry32(seed), gauss = () => (rng() + rng() + rng() - 1.5) * 2;
+    const stars = Array.from({ length: 150 }, () => ({ x: 4 + rng() * 392, y: 4 + rng() * 392 }));
+    const frames = [];
+    for (const mjd of MJDS) {
+      for (const [ox, oy] of tilesUsed) {
+        const inTile = (p) => p.x - ox > 3 && p.x - ox < 197 && p.y - oy > 3 && p.y - oy < 197;
+        const dots = stars.filter(inTile).map((s) => ({ x: s.x - ox + gauss() * 0.15, y: s.y - oy + gauss() * 0.15, snr: 20 + rng() * 40 }));
+        for (let k = 0; k < 3; k++) dots.push({ x: 3 + rng() * 194, y: 3 + rng() * 194, snr: 6 + rng() * 4 });      // noise dots
+        if (withBody) { const b = bodyAt(mjd); if (inTile(b)) dots.push({ x: b.x - ox + gauss() * 0.15, y: b.y - oy + gauss() * 0.15, snr: 40 }); }
+        frames.push({ mjd, sources: dots, geo: tileGeo([ox, oy]) });
+      }
+    }
+    return frames;
+  };
+  let found = 0, within = 0, extra = 0, single = 0, seen = 0;
+  for (const seed of [41, 42, 43, 44]) {
+    const res = findDistantMovers(mosaic(seed), COMMON);
+    const hit = res.candidates.find((c) => Math.abs(c.distanceAU / RHO - 1) < 0.12);
+    if (hit) { found++; if (hit.distanceRangeAU[0] <= RHO * 1.05 && hit.distanceRangeAU[1] >= RHO * 0.95) within++; }
+    extra += res.candidates.length - (hit ? 1 : 0);
+    // the same sky seen through ONE cutout only (the central 200 px, i.e. the one that holds the body on the middle date)
+    const one = findDistantMovers(mosaic(seed, { tilesUsed: [[100, 100]] }), COMMON);
+    if (one.candidates.some((c) => Math.abs(c.distanceAU / RHO - 1) < 0.12)) single++;
+    const inside = MJDS.filter((m) => { const b = bodyAt(m); return b.x > 103 && b.x < 297 && b.y > 103 && b.y < 297; }).length;
+    seen = inside;
+  }
+  check("mosaic: the body that swings across four cutouts is found, distance within 12 % of 400 AU", found === 4, `${found}/4 fields`);
+  check("mosaic: the quoted range contains the truth", within >= 3, `${within}/4`);
+  check("mosaic: nothing else is reported", extra === 0, `${extra} extra`);
+  check("one cutout alone loses it (the body is inside the central cutout in only some of the dates)", single === 0 && seen < MJDS.length, `found in ${single}/4 fields, body inside that cutout on ${seen} of ${MJDS.length} dates`);
+  let falseAlarms = 0;
+  for (const seed of [51, 52, 53]) falseAlarms += findDistantMovers(mosaic(seed, { withBody: false }), COMMON).candidates.length;
+  check("mosaic: no body, no candidate (3 fields of 4 cutouts, 3 noise dots each)", falseAlarms === 0, `${falseAlarms}`);
+  const t0 = performance.now();
+  findDistantMovers(mosaic(61), COMMON);
+  check("mosaic: 36 images and ~800 dots each are searched in a few seconds", performance.now() - t0 < 8000, `${((performance.now() - t0) / 1000).toFixed(1)} s`);
 }
 
 // ---------------------------------------------------------------- 5) words

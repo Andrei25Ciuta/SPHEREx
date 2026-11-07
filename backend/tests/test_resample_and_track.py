@@ -7,7 +7,7 @@ import pytest
 
 from spherex.cache import CACHE_DIR, save_bytes
 from spherex.cutout import _bilinear, cutout, target_wcs
-from spherex.floatdata import float_cutout_bytes
+from spherex.floatdata import float_cutout_bytes, mask_cutout_bytes
 from spherex.photometry import jansky_per_image_unit, measure, position_at
 from spherex.query import read_frame_file
 
@@ -64,6 +64,17 @@ def test_the_float_file_is_north_up_background_subtracted_little_endian():
     assert data[3, 1] == pytest.approx(60.0)                              # flipped like the PNG
     assert np.isnan(data[0, 2])                                           # the NaN moved to the top row too
     assert np.nanmedian(data) == pytest.approx(0.0)
+
+
+def test_the_mask_file_marks_bad_pixels_north_up_and_never_marks_the_outside():
+    flags = np.zeros((4, 4), dtype=np.int32)
+    flags[0, 1] = 1 << 1                                                  # overflow (a BAD bit) at FITS row 0 = south edge
+    flags[1, 1] = 1 << 21                                                 # "known source": informational, not bad
+    flags[2, 2] = -1                                                      # outside the frame: never bad
+    mask = np.frombuffer(mask_cutout_bytes(flags, (4, 4)), dtype=np.uint8).reshape(4, 4)
+    assert mask[3, 1] == 1                                                # flipped like the float file
+    assert mask.sum() == 1                                                # only that pixel
+    assert np.frombuffer(mask_cutout_bytes(None, (4, 4)), dtype=np.uint8).sum() == 0     # no flags at all: nothing masked
 
 
 def test_binary_side_files_are_saved_next_to_the_png_files():

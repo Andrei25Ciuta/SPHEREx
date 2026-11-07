@@ -29,6 +29,8 @@ export const DEFAULTS = {
   minPassGapDays: 30,       // images less than this apart are one survey pass
   maxSpeedPxPerYear: 60,    // fastest motion we look for (60 px/yr = 370"/yr)
   minDetections: 3,         // a line needs this many dots ... and at least this fraction of the images:
+  maxFalseAlarm: 1,          // drop candidates for which this many CHANCE lines are expected in the whole field (see falseAlarm below)
+  area: 0,                   // image area in px^2 for that estimate; 0 = take the bounding box of the dots
   minDetectionFraction: 0.6,   // was 0.5: with 6 images and ~9 dots each, 3 chance matches gave 3 false candidates on real data (Epsilon Indi B, D6)
   maxRmsPx: 0.8,            // the dots must lie this close to their fitted line (rms)
   minMotionPx: 0.8,         // total motion over the observed period (about 5")
@@ -37,6 +39,25 @@ export const DEFAULTS = {
   sigmaFloor: 0.5,          // smallest noise (in grey levels) we believe; use ~1e-9 for real (float) pixel values
 };
 const GRID_CELL = 8;        // px, for the neighbour lookup
+
+/** P(X >= k) for X ~ Binomial(trials, p), summed from the top (no cancellation for tiny tails). */
+export function binomialTail(trials, p, k) {
+  if (k <= 0) return 1;
+  if (k > trials || p <= 0) return 0;
+  if (p >= 1) return 1;
+  const logFact = [0];
+  for (let i = 1; i <= trials; i++) logFact.push(logFact[i - 1] + Math.log(i));
+  let sum = 0;
+  for (let i = k; i <= trials; i++) sum += Math.exp(logFact[trials] - logFact[i] - logFact[trials - i] + i * Math.log(p) + (trials - i) * Math.log1p(-p));
+  return Math.min(1, sum);
+}
+
+/** Area (px^2) covered by the dots of all images: the bounding box (used when the caller does not say how big the image is). */
+function boundingArea(dots) {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const list of dots) for (const d of list) { x0 = Math.min(x0, d.x); x1 = Math.max(x1, d.x); y0 = Math.min(y0, d.y); y1 = Math.max(y1, d.y); }
+  return Number.isFinite(x0) ? Math.max(100, (x1 - x0) * (y1 - y0)) : 100;
+}
 
 // ------------------------------------------------------------------ 1) detection
 
@@ -129,12 +150,90 @@ function centroid(grey, n, px, py, background) {
   return { x: cx, y: cy };
 }
 
+const FIT_HALF = 5, FIT_SIGMA = 1.3;        // 11 x 11 window; star width (px) of the fixed Gaussian model, as the centroid window
+
+/** Solve the small normal equations A x = b (Gauss-Jordan); null when singular. */
+function solveSmall(A, b) {
+  const m = b.length, M = A.map((row, i) => [...row, b[i]]);
+  for (let c = 0; c < m; c++) {
+    let piv = c;
+    for (let r = c + 1; r < m; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    if (Math.abs(M[piv][c]) < 1e-12) return null;
+    [M[c], M[piv]] = [M[piv], M[c]];
+    for (let r = 0; r < m; r++) {
+      if (r === c) continue;
+      const f = M[r][c] / M[c][c];
+      for (let k = c; k <= m; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  return M.map((row, i) => row[m] / row[i]);
+}
+
+const MIN_BAD_CORE = 6;       // bad (or empty) pixels among the 25 of the 5 x 5 core before the masked fit is used
+
+/**
+ * Is the core of the star (5 x 5 around its peak) compromised: at least MIN_BAD_CORE pixels flagged as bad or without data?
+ * With one or two flagged pixels the plain centroid is better: on real Epsilon Indi B (faint, not saturated) a single flagged
+ * core pixel moved the fixed-width fit by 0.4 px, because a Gaussian is not the real PSF.
+ */
+function coreIsCompromised(image, mask, n, x, y) {
+  let bad = 0;
+  for (let dy = -2; dy <= 2; dy++) {
+    for (let dx = -2; dx <= 2; dx++) {
+      const xx = x + dx, yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= n || yy >= n) continue;
+      if (mask[yy * n + xx] || !Number.isFinite(image[yy * n + xx])) bad++;
+    }
+  }
+  return bad >= MIN_BAD_CORE;
+}
+
+/**
+ * Position of a star whose core is flagged (a saturated bright star): a Gaussian of fixed width fitted by least squares to
+ * the GOOD pixels only (centre, height and background free). A centroid over all pixels is pulled by whatever the flagged
+ * core happens to hold on each date: on real Barnard's Star (detector D2) the motion came out 3.7"/yr off the catalogue
+ * that way and 0.5"/yr with this fit. Returns null when too few good pixels or the fit runs away (the caller then keeps the centroid).
+ */
+function fitMaskedGaussian(grey, image, mask, n, px, py, background) {
+  const pix = [];
+  for (let dy = -FIT_HALF; dy <= FIT_HALF; dy++) {
+    for (let dx = -FIT_HALF; dx <= FIT_HALF; dx++) {
+      const x = px + dx, y = py + dy;
+      if (x < 0 || y < 0 || x >= n || y >= n || mask[y * n + x] || !Number.isFinite(image[y * n + x])) continue;
+      pix.push([x + 0.5, y + 0.5, grey[y * n + x]]);
+    }
+  }
+  if (pix.length < 14) return null;
+  const top = Math.max(...pix.map((p) => p[2])) - background;
+  if (!(top > 0)) return null;
+  let cx = px + 0.5, cy = py + 0.5, amp = top, bg = background;
+  for (let it = 0; it < 40; it++) {
+    const AtA = Array.from({ length: 4 }, () => new Array(4).fill(0)), Atb = new Array(4).fill(0);
+    for (const [x, y, v] of pix) {
+      const ex = x - cx, ey = y - cy, g = Math.exp(-(ex * ex + ey * ey) / (2 * FIT_SIGMA * FIT_SIGMA));
+      const row = [amp * g * ex / (FIT_SIGMA * FIT_SIGMA), amp * g * ey / (FIT_SIGMA * FIT_SIGMA), g, 1];
+      const r = v - (bg + amp * g);
+      for (let i = 0; i < 4; i++) { Atb[i] += row[i] * r; for (let j = 0; j < 4; j++) AtA[i][j] += row[i] * row[j]; }
+    }
+    const step = solveSmall(AtA, Atb);
+    if (!step) return null;
+    const damp = Math.min(1, 1 / Math.max(1e-9, Math.hypot(step[0], step[1])));          // never move the centre more than 1 px at once
+    cx += step[0] * damp; cy += step[1] * damp; amp += step[2]; bg += step[3];
+    if (Math.abs(cx - px - 0.5) > 3 || Math.abs(cy - py - 0.5) > 3 || !(amp > 0)) return null;
+    if (Math.hypot(step[0], step[1]) < 1e-4) break;
+  }
+  return { x: cx, y: cy };
+}
+
 /**
  * Dots in one grey image (n x n, values 0..255, row 0 = top).
  * Returns [{ x, y, snr }] with x, y in "edge" pixel coordinates (centre of pixel 0 = 0.5).
+ * options.mask (optional, Uint8Array n*n, 1 = bad pixel, from the backend's `maskUrl`): a star whose 5 x 5 core has at least
+ * MIN_BAD_CORE flagged pixels (a saturated star) is positioned by fitting a Gaussian on the good pixels only (see fitMaskedGaussian).
  */
-export function detectSources(image, n, { detectSigma = DEFAULTS.detectSigma, edgeMargin = DEFAULTS.edgeMargin, sigmaFloor = DEFAULTS.sigmaFloor } = {}) {
+export function detectSources(image, n, { detectSigma = DEFAULTS.detectSigma, edgeMargin = DEFAULTS.edgeMargin, sigmaFloor = DEFAULTS.sigmaFloor, mask = null } = {}) {
   if (!image || image.length !== n * n || n < 2 * edgeMargin + 3) return [];
+  const useMask = mask && mask.length === n * n;
   const grey = fillMissing(image);          // `image` may be 8-bit grey values or real (float) pixel values
   const sm = smooth(grey, n);
   const { median, sigma } = backgroundStats(sm, sigmaFloor);
@@ -144,7 +243,8 @@ export function detectSources(image, n, { detectSigma = DEFAULTS.detectSigma, ed
     for (let x = edgeMargin; x < n - edgeMargin; x++) {
       const v = sm[y * n + x];
       if (v < threshold || !isLocalMax(sm, n, x, y, v)) continue;
-      const c = centroid(grey, n, x, y, median);
+      let c = centroid(grey, n, x, y, median);
+      if (c && useMask && coreIsCompromised(image, mask, n, x, y)) c = fitMaskedGaussian(grey, image, mask, n, x, y, median) ?? c;
       if (c) found.push({ x: c.x, y: c.y, snr: (v - median) / sigma });
     }
   }
@@ -253,6 +353,7 @@ function findMoversOnce(frames, o) {
   const dots = frames.map((f, k) => f.sources.map((s) => ({ k, x: s.x, y: s.y, snr: s.snr ?? 0, used: false })));
   const grids = dots.map(makeGrid);
   const candidates = [];
+  let tested = 0;                                    // pairs of dots tried as the start of a line (for the false-alarm estimate)
 
   // The closest unused dot to the line's predicted spot, image by image.
   const collect = (line) => {
@@ -325,6 +426,7 @@ function findMoversOnce(frames, o) {
           if (a.used) continue;
           const near = [];
           grids[j].each(a.x, a.y, radiusFor(dt), (b) => near.push(b));
+          tested += near.length;
           near.sort((p, q) => Math.hypot(p.x - a.x, p.y - a.y) - Math.hypot(q.x - a.x, q.y - a.y));
           for (const b of near) {
             if (a.used) break;
@@ -342,8 +444,19 @@ function findMoversOnce(frames, o) {
   search(() => o.staticRadiusPx, true);
   search((dt) => o.maxSpeedPxPerYear * dt, false);
 
-  candidates.sort((p, q) => q.significance - p.significance);
-  return { candidates, stats };
+  // How likely is it that CHANCE alone made a line like each candidate? Any dot has a small probability pHit of lying within
+  // matchRadiusPx of a predicted spot (dots * pi * r^2 / area). A line started by one of the `tested` pairs needs at least
+  // nDet - 2 further hits among the other N - 2 images, so  expected chance lines = tested * P(Binomial(N-2, pHit) >= nDet - 2).
+  // (The significance in sigma grows with speed, so a fast chance line can show 20 sigma: this is the honest number.)
+  const area = o.area > 0 ? o.area : boundingArea(dots);
+  const pHit = dots.reduce((s, list) => s + Math.min(0.5, (list.length * Math.PI * o.matchRadiusPx ** 2) / area), 0) / N;
+  for (const c of candidates) c.falseAlarm = tested * binomialTail(N - 2, pHit, c.nDet - 2);
+  stats.pairsTested = tested;
+  stats.chanceHitProbability = pHit;
+  const kept = candidates.filter((c) => c.falseAlarm <= o.maxFalseAlarm);
+  stats.rejectedByFalseAlarm = candidates.length - kept.length;
+  kept.sort((p, q) => p.falseAlarm - q.falseAlarm || q.significance - p.significance);
+  return { candidates: kept, stats };
 }
 
 const median = (values) => {
@@ -410,10 +523,124 @@ export function findMovers(frames, options = {}) {
   return result;
 }
 
-/** Detect dots in every image, then link them. frames: [{ mjd, grey }] in time order. */
+/**
+ * Detect dots in every image, then link them. frames: [{ mjd, grey, mask? }] in time order (mask = the backend's
+ * bad-pixel bytes, see detectSources). The image area is passed on for the false-alarm estimate.
+ */
 export function findMoversInImages(frames, n, options = {}) {
-  const detected = frames.map((f) => ({ mjd: f.mjd, sources: detectSources(f.grey, n, options) }));
-  return findMovers(detected, options);
+  const detected = frames.map((f) => ({ mjd: f.mjd, sources: detectSources(f.grey, n, { ...options, mask: f.mask ?? null }) }));
+  return findMovers(detected, { area: n * n, ...options });
+}
+
+/**
+ * The images of ALL detectors of a field, linked together AND each detector alone; the results are merged.
+ * frames: [{ mjd, detector, id, grey, mask? }] in time order. The search uses positions only, so different wavelengths can be
+ * linked together: 3-6 times more images and passes (real Barnard's Star: 0.80 -> 0.28 arcsec/yr off the catalogue). But an
+ * object that is invisible in part of the spectrum (a brown dwarf in the short bands) is then in too few of the images, and
+ * only a single detector sees it often enough: so both are tried. The same object found twice (a position within 3 px on
+ * the same date and a similar velocity) is kept once, with the smaller chance of being a false alarm.
+ * Each candidate gets `frameIds` (the image each entry of its `shifts` belongs to) and `foundIn` ("all detectors" or "D6").
+ */
+export function findMoversAcrossDetectors(frames, n, options = {}) {
+  const detectors = [...new Set(frames.map((f) => f.detector))];
+  const sets = [{ name: detectors.length > 1 ? "all detectors" : detectors[0], list: frames }];
+  if (detectors.length > 1) for (const d of detectors) sets.push({ name: d, list: frames.filter((f) => f.detector === d) });
+  const all = [];
+  let firstResult = null, firstRan = null;                       // the first search at all / the first that was able to run
+  for (const s of sets) {
+    const r = findMoversInImages(s.list, n, options);
+    firstResult ??= r;
+    if (r.reason) continue;                                      // e.g. this detector alone has fewer than 3 passes
+    firstRan ??= r;
+    const ids = s.list.map((f) => f.id);
+    for (const c of r.candidates) { c.frameIds = ids; c.foundIn = s.name; all.push(c); }
+  }
+  all.sort((p, q) => p.falseAlarm - q.falseAlarm || q.significance - p.significance);
+  const kept = [];
+  for (const c of all) {
+    const same = kept.some((k) => {
+      const p = moverPositionAtMjd(c, k.mjdRef), v = Math.hypot(c.vx - k.vx, c.vy - k.vy);
+      return Math.hypot(p.x - k.x, p.y - k.y) <= 3 && v <= Math.max(1, 0.5 * Math.hypot(k.vx, k.vy));
+    });
+    if (!same) kept.push(c);
+  }
+  const base = firstRan ?? firstResult;
+  return { candidates: kept, stats: { ...base.stats, searchedSets: sets.map((s) => s.name) }, reason: firstRan ? undefined : firstResult.reason };
+}
+
+// ------------------------------------------------------------------ 2b) does the candidate's path hold up in EVERY image?
+
+/**
+ * Brightness at one spot: the sum inside a circle of radius r (px) minus the median background of a ring from r+2 to r+5, with
+ * the noise taken from the ring's robust scatter (so a neighbouring star does not inflate it). Pixel (px, py) covers
+ * [px, px+1). Returns { flux, err, snr } or null when too close to the edge / no data.
+ */
+export function apertureSnr(img, n, x, y, r = 2) {
+  if (x < r || y < r || x > n - r || y > n - r) return null;       // a partly cut-off aperture would give a flux that is too low: not measurable
+  const inside = [], ring = [];
+  const rOut = r + 5;
+  for (let py = Math.floor(y - rOut); py <= Math.ceil(y + rOut); py++) {
+    if (py < 0 || py >= n) continue;
+    for (let px = Math.floor(x - rOut); px <= Math.ceil(x + rOut); px++) {
+      if (px < 0 || px >= n) continue;
+      const v = img[py * n + px];
+      if (!Number.isFinite(v)) continue;
+      const d = Math.hypot(px + 0.5 - x, py + 0.5 - y);
+      if (d <= r) inside.push(v); else if (d >= r + 2 && d <= rOut) ring.push(v);
+    }
+  }
+  if (inside.length < 0.8 * Math.PI * r * r || ring.length < 10) return null;           // holes (no data) in the aperture: not measurable
+  const sorted = [...ring].sort((a, b) => a - b);
+  const bg = sorted[Math.floor(sorted.length / 2)];
+  const mad = [...ring].map((v) => Math.abs(v - bg)).sort((a, b) => a - b)[Math.floor(ring.length / 2)];
+  const sd = Math.max(1.4826 * mad, 1e-12);
+  const flux = inside.reduce((s, v) => s + v, 0) - bg * inside.length;
+  const err = sd * Math.sqrt(inside.length);
+  return { flux, err, snr: flux / err };
+}
+
+/**
+ * Measure a candidate at its predicted position in every image, whether or not a dot was found there.
+ * arrays: the images (n x n, one per frame); positions: [{ x, y }] per frame (pixels of that image).
+ * A real mover is there in most images (it can be faint at some wavelengths); a chance line is there only where it
+ * picked up its dots. An image supports the candidate when the S/N there is at least minSnr AND at least `relative` of the
+ * candidate's best S/N (noise alone reaches S/N of 3-12 here and there, and a chance line that caught one bright star somewhere
+ * else would otherwise look supported). Real data (7 Nov 2026): the 4 real candidates are supported in 100 % of their images
+ * (S/N 134-3490); the 3 false candidates of Epsilon Indi B in D6 in 2-3 of 6.
+ * Returns { snr: [per frame or null], supported, measurable, fraction }.
+ */
+export function trackSupport(arrays, n, positions, { radius = 2, minSnr = 5, relative = 0.1 } = {}) {
+  const snr = positions.map((p, k) => {
+    const m = arrays[k] ? apertureSnr(arrays[k], n, p.x, p.y, radius) : null;
+    return m ? m.snr : null;
+  });
+  const measured = snr.filter((s) => s !== null);
+  const best = measured.length ? Math.max(...measured) : 0;
+  const limit = Math.max(minSnr, relative * best);
+  const supported = measured.filter((s) => s >= limit).length;
+  return { snr, supported, measurable: measured.length, fraction: measured.length ? supported / measured.length : 0 };
+}
+
+/**
+ * Is another source close enough to a candidate's path to add its light to the measurement? For each image: the distance (px)
+ * from the predicted position to the nearest detected dot that is NOT the candidate itself (farther than minPx, the candidate's
+ * own dot sits within about 0.8 px of it). A dot within maxPx (2.5 px = 15") lies inside or just outside the 2-pixel aperture.
+ * Real case (7 Nov 2026): around WISE 0855 a J = 15.4 star 7.5" away put 0.64 mJy into the 1-2 um measurement of a brown
+ * dwarf that has almost no flux there, and the colour hint read it as "neutral".
+ * sourcesPerFrame: [[{ x, y }]] per image (the dots of every image); positions: [{ x, y }] per image.
+ * Returns { distances: [px or null], blended: number of images with a neighbour in range, nearestPx }.
+ */
+export function blendWarning(positions, sourcesPerFrame, { minPx = 0.8, maxPx = 2.5 } = {}) {
+  const distances = positions.map((p, k) => {
+    let best = null;
+    for (const s of sourcesPerFrame[k] ?? []) {
+      const d = Math.hypot(s.x - p.x, s.y - p.y);
+      if (d > minPx && (best === null || d < best)) best = d;
+    }
+    return best;
+  });
+  const near = distances.filter((d) => d !== null && d <= maxPx);
+  return { distances, blended: near.length, nearestPx: near.length ? Math.min(...near) : null };
 }
 
 // ------------------------------------------------------------------ 3) describing a candidate

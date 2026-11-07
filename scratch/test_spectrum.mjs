@@ -1,5 +1,5 @@
 // Tests for frontend/js/features/spectrum.js (colour hint of a moving object).  Run: node scratch/test_spectrum.mjs
-import { colourHint, fluxColumn, BANDS } from "../frontend/js/features/spectrum.js";
+import { colourHint, fluxColumn, spectralSmoothness, BANDS } from "../frontend/js/features/spectrum.js";
 
 let failed = 0;
 function check(name, ok, detail = "") {
@@ -62,6 +62,27 @@ check("the bands are the documented ones", BANDS.short[0] === 0.7 && BANDS.long[
   // Barnard's Star, real: every measurement flagged (overflow in the core) -> no judgement at all
   const barnard = [row(1.101, 5760, true), row(1.21, 2750, true), row(4.922, 3330, true), row(4.709, 3860, true)];
   check("REAL Barnard's Star: all flagged -> unknown, with the reason", colourHint(barnard).kind === "unknown" && colourHint(barnard).nFlagged === 4);
+}
+
+// ---------------------------------------------------------------- spectral smoothness (is the spectrum one object's?)
+{
+  const pt = (wavelengthUm, flux, flagged = false) => ({ wavelengthUm, flux, fluxErr: Math.max(0.01, flux * 0.01), flagged });
+  const lambdas = [1.10, 1.15, 1.20, 1.25, 1.30, 1.35, 1.40, 1.45, 4.40, 4.45, 4.50, 4.55];
+  const smooth = lambdas.map((l) => pt(l, 100 * l ** -2));
+  const s = spectralSmoothness(smooth);
+  check("smoothness: a smooth spectrum (Rayleigh-Jeans) has small steps", s.kind === "smooth" && s.step < 0.1, `${s.kind}, step ${s.step?.toFixed(3)}`);
+  const { mulberry32 } = await import("../frontend/js/data/mockSource.js");
+  const rng = mulberry32(3);
+  const random = lambdas.map((l) => pt(l, 5 + 200 * rng()));
+  check("smoothness: random fluxes are jumpy", spectralSmoothness(random).kind === "jumpy", `step ${spectralSmoothness(random).step?.toFixed(2)}`);
+  check("smoothness: too few usable points say 'unknown', not a verdict", spectralSmoothness(smooth.slice(0, 4)).kind === "unknown");
+  check("smoothness: flagged points and points with S/N below 5 are ignored", spectralSmoothness(smooth.map((p, i) => (i % 2 ? { ...p, flagged: true } : p))).pairs < spectralSmoothness(smooth).pairs
+    && spectralSmoothness(smooth.map((p) => ({ ...p, fluxErr: p.flux }))).kind === "unknown");
+  // REAL Epsilon Indi B (mJy, unflagged, S/N >= 5): D2 + D6
+  const real = [[1.109, 13.57], [1.175, 15.11], [1.188, 19.29], [1.245, 34.55], [1.275, 40.56], [1.579, 39.06], [1.613, 35.44], [4.425, 23.80], [4.439, 23.26], [4.688, 21.41], [4.912, 20.97]].map(([l, f]) => pt(l, f));
+  check("REAL Epsilon Indi B: smooth", spectralSmoothness(real).kind === "smooth", `step ${spectralSmoothness(real).step?.toFixed(3)}, ${spectralSmoothness(real).pairs} pairs`);
+  const hint = colourHint(real);
+  check("the colour hint now also says how smooth the spectrum is", /neighbouring wavelengths/.test(hint.text) && hint.smoothness.kind === "smooth", hint.text.slice(-110));
 }
 
 // ---------------------------------------------------------------- end to end on the mock sky

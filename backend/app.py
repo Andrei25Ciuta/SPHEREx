@@ -25,7 +25,7 @@ from fastapi.staticfiles import StaticFiles
 
 from spherex import cache, hips_proxy
 from spherex.cutout import cutout, flag_summary, target_wcs
-from spherex.floatdata import float_cutout_bytes
+from spherex.floatdata import float_cutout_bytes, mask_cutout_bytes
 from spherex.photometry import measure
 from spherex.query import LocalArchive
 from spherex.stretch import STRETCH_VERSION, flags_to_png, shared_stretch, to_png
@@ -76,7 +76,8 @@ def cutouts(
     base = str(request.base_url)            # e.g. "http://localhost:8001/"
     return {"frames": [{**f, "imageUrl": base + f["imageUrl"],
                         "flagsUrl": base + f["flagsUrl"] if f.get("flagsUrl") else None,
-                        "dataUrl": base + f["dataUrl"] if f.get("dataUrl") else None}
+                        "dataUrl": base + f["dataUrl"] if f.get("dataUrl") else None,
+                        "maskUrl": base + f["maskUrl"] if f.get("maskUrl") else None}
                        for f in result]}
 
 
@@ -125,6 +126,8 @@ def _build(frames, ra, dec, fov, scale, key):
                 "imageUrl": cache.save_png(key, i, to_png(arr8)),
                 # the same pixels as real numbers (float32, background-subtracted, north up): for detection
                 "dataUrl": cache.save_bytes(key, i, float_cutout_bytes(img), "f32"),
+                # 1 = a BAD flag bit is set here (a saturated core, hot pixels ...): the position of a bright star is fitted without them
+                "maskUrl": cache.save_bytes(key, f"{i}_mask", mask_cutout_bytes(flags, img.shape), "u8"),
                 "flags": flag_summary(flags),
                 "flagsUrl": cache.save_png(key, f"{i}_flags", mask_png) if mask_png else None,
                 "pixelScaleArcsec": round(scale, 4),
