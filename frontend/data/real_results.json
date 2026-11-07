@@ -76,15 +76,58 @@
     "fitAU": 52.65, "fitLowAU": 52.62, "fitHighAU": 52.67,
     "imageCount": 7, "detections": 4, "degreesOfFreedom": 3,
     "chi2Straight": 2477413, "chi2Parallax": 6.7, "maxResidualArcsec": 6,
-    "blind": { "dots": 72, "candidates": 10, "candidateAU": [52, 54], "foundTheBody": 0 }
+    "blind": { "dots": 72, "candidates": 10, "candidateAU": [52, 54], "foundTheBody": 0 },
+    "fairTest": {
+      "imageCount": 11, "bodyDetectedIn": 8, "cutoutArcmin": 30,
+      "defaultOptions": { "candidates": 0, "foundTheBody": 0 },
+      "loosenedOptions": { "candidates": 38, "foundTheBody": 1, "bodyAU": 53.3, "bodyLowAU": 52.7, "bodyHighAU": 53.8, "bodyDots": 8, "bodyRmsPx": 0.46 },
+      "truthAU": [52, 53],
+      "emptyFieldCandidates": [27, 41]
+    }
+  },
+
+  "calibration": {
+    "fakesPerCell": 40,
+    "limits": [
+      { "label": "WISE 0855 · D2", "noiseRatio": 1.43, "flux50": 0.63, "flux90": 0.96 },
+      { "label": "WISE 0855 · D6", "noiseRatio": 0.63, "flux50": 0.86, "flux90": 1.34 },
+      { "label": "Epsilon Indi B · D6", "noiseRatio": 0.68, "flux50": 0.68, "flux90": 1.12 },
+      { "label": "Epsilon Indi B · D2", "noiseRatio": 1.34, "flux50": 1.52, "flux90": 3.84 },
+      { "label": "Barnard's Star · D6", "noiseRatio": 2.90, "flux50": 7.4, "flux90": 12.4 },
+      { "label": "Barnard's Star · D2", "noiseRatio": 3.46, "flux50": 21.7, "flux90": null }
+    ],
+    "emptySky": {
+      "copies": 300,
+      "fields": [
+        { "label": "Barnard's Star · D2 (18 images, 4 passes)", "defaultRule": 0.0, "originalRule": 0.0 },
+        { "label": "Epsilon Indi B · D2 (11, 5)", "defaultRule": 0.0, "originalRule": 1.3 },
+        { "label": "Epsilon Indi B · D6 (6, 4)", "defaultRule": 1.3, "originalRule": 100 },
+        { "label": "WISE 0855 · D2 (6, 4)", "defaultRule": 2.0, "originalRule": 100 },
+        { "label": "Barnard's Star · D6 (6, 3)", "defaultRule": 11.3, "originalRule": 95.3 },
+        { "label": "WISE 0855 · D6 (6, 3)", "defaultRule": 13.3, "originalRule": 94.0 }
+      ]
+    }
+  },
+
+  "planetX": {
+    "oneImageV": [16.7, 17.2],
+    "farthestAuOneImage": [153, 273],
+    "planets": [
+      { "label": "2 Earth radii, albedo 0.3", "v300": 19.7, "v500": 21.9, "v1000": 24.9 },
+      { "label": "3 Earth radii, albedo 0.3", "v300": 18.8, "v500": 21.0, "v1000": 24.0 },
+      { "label": "4 Earth radii, albedo 0.5", "v300": 17.6, "v500": 19.8, "v1000": 22.8 }
+    ]
   },
 
   "limits": [
     "Six real runs on two fast-moving objects, one asteroid and one dwarf planet: not a statistical survey.",
-    "The blind Planet X search has not been shown to work on real data; the distance fit works only when told where to look.",
+    "The blind Planet X search found Makemake once (a fair test, loosened options, one of 38 candidates, when an empty field gives 27–41); with the app's default options it found nothing. The distance fit works when told where to look.",
     "WISE 0855 in D6 is a suggestive stack of 4 images, not a detection.",
     "The bad-pixel fix for Barnard's Star in D2 was designed after seeing the error on the same images, so it is not an independent test.",
     "Saturated stars keep a lower-limit flux. Fluxes are quick aperture sums, 2–10 % below catalogue magnitudes, not SPHEREx's own calibrated photometry.",
-    "Motion below about 1 pixel (6″) over the whole period looks like a still star; at least 3 survey passes about 6 months apart are needed."
+    "Motion below about 1 pixel (6″) over the whole period looks like a still star; at least 3 survey passes about 6 months apart are needed.",
+    "Around a saturated star the detector's sensitivity is 20–30 times worse than in a clean field; a local background subtraction might fix this, and was not tried.",
+    "A single SPHEREx exposure reaches about V = 17: a Planet-Nine-like body is 3–5 magnitudes too faint for single images. The magnitude formulas and the Planet Nine parameters are from memory.",
+    "The calibration uses Gaussian fake stars with the PSF width of the FITS headers, on six field–detector pairs of 5′ cutouts; the empty-sky copies do not contain real variable stars."
   ]
 }

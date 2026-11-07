@@ -33,7 +33,7 @@
 3. **Find movers + spectrum along the path**: one candidate list, known objects labelled, colour hint.
 4. **Planet X mode**: a drawing of the Earth's orbit and the loop a distant body makes; "straight line vs loop".
 5. **Validation on real data**: the table of §2 of [VALIDATION.md](VALIDATION.md), including the failure.
-6. **What we do not claim**: the blind Planet X search has never found a real body (the parallax fit recovers Makemake only when told where to look); WISE 0855 is a suggestive stack, not a detection; the colour hint gave "neutral" for a real brown dwarf and cannot separate an M dwarf from an early T dwarf; one test run was tuned after it failed, and the Barnard D2 fix was made after seeing the error.
+6. **What we do not claim**: the blind Planet X search has found a real body only once (Makemake, in a fair test, with loosened options, as one of 38 candidates when an empty field gives about 33; with the app's default options it found nothing); WISE 0855 is a suggestive stack, not a detection; the colour hint gave "neutral" for a real brown dwarf and cannot separate an M dwarf from an early T dwarf; one test run was tuned after it failed, and the Barnard D2 fix was made after seeing the error.
 7. **Credits and honesty**: sources ([CREDITS.md](../CREDITS.md)), built with Claude Code, repository started 2026-11-05, links.
 
 ## 3. The five judging criteria
@@ -56,11 +56,13 @@
 | Jansky scale: measured / catalogue flux of isolated stars 0.97 (D2) and 0.90 (D6) in the Barnard field | [VALIDATION.md](VALIDATION.md) §3 (`scratch/validate_photometry.py`) |
 | Real asteroid Arosa (V 14.6) seen at 107 σ, 1.0″ from its predicted position; 8.67 mJy where SkyBoT puts it at 00:10 UTC and 0.02 ± 0.84 mJy at the later position, then 8.56 mJy there at 19:42 UTC: it moved 563″ in 19.5 hours; no 2MASS star there | [VALIDATION.md](VALIDATION.md) §6 |
 | WISE 0855 stacked along its path in D6: 0.415 ± 0.076 mJy, 4.3 × the control scatter (suggestive, not a detection); the 1-2 µm excess is a neighbouring J = 15.4 star | [VALIDATION.md](VALIDATION.md) §7 (`scratch/stack_wise0855.py`) |
-| Makemake: Earth-parallax fit 52.65 AU against 52.62 AU from JPL Horizons (told where to look); the blind search did NOT find it | [VALIDATION.md](VALIDATION.md) §5 (`scratch/real_parallax.mjs`) |
+| Makemake: Earth-parallax fit 52.65 AU against 52.62 AU from JPL Horizons (told where to look); the blind search did NOT find it in the first, biased test | [VALIDATION.md](VALIDATION.md) §5 (`scratch/real_parallax.mjs`) |
+| Fair blind test on 11 off-centre 30′ cutouts of Makemake: default options 0 candidates; loosened options 38, one of them Makemake (53.3 AU, truth 52-53); an empty field gives 27-41 chance candidates | [VALIDATION.md](VALIDATION.md) §12 (`scratch/blind_planet_x.mjs`) |
+| One image reaches V about 17 (clean field); a Planet-Nine-like body is 3-5 magnitudes fainter | [VALIDATION.md](VALIDATION.md) §10-§11 |
 | Colour ratio of Epsilon Indi B (real brown-dwarf pair): 0.65, "neutral" | [VALIDATION.md](VALIDATION.md) §3 |
 | Barnard D2: 3.72 ″/yr off before, 0.31 after fitting from the unflagged pixels (a fix made after seeing the error) | [VALIDATION.md](VALIDATION.md) §2, "Barnard in D2" |
 | Simulated body at 600 AU recovered at 600-601 AU | [VALIDATION.md](VALIDATION.md) §5 (`scratch/test_parallax.mjs`) |
-| 112 backend tests + 357 browser-side checks (7 Nov 2026) | `pytest backend`, `node scratch/test_*.mjs` |
+| 112 backend tests + 359 browser-side checks (7 Nov 2026) | `pytest backend`, `node scratch/test_*.mjs` |
 | A public page with only derived numbers and charts of the real-data runs (no pixel), failures next to successes | `frontend/results.html`; [VALIDATION.md](VALIDATION.md) §9 |
 | The sky map shows, in brackets, the country a sky point is straight above right now (46 of 46 interior test points right; borders are 110 m scale, so tens of km off near a border) | [VALIDATION.md](VALIDATION.md) §9 (`scratch/test_skygeo.mjs`) |
 | SkyBoT answers 15 image dates in 9 s | [VALIDATION.md](VALIDATION.md) §6 |
@@ -68,7 +70,7 @@
 ## 5. Do **not** say
 
 - "We found a planet" / "a new object". Candidates are not discoveries (the exports say so).
-- "Planet X mode works on real data". The distance fit recovered Makemake (52.65 against 52.62 AU) only when told where to look; the blind search did not find it in the same real dots. The simulated body at 600 AU is the only blind recovery.
+- "Planet X mode works on real data". The distance fit recovered Makemake (52.65 against 52.62 AU) only when told where to look; the blind search did not find it in the same real dots, and in the later fair test only loosened options found it, as one of 38 candidates. The simulated body at 600 AU is the only clean blind recovery.
 - "We detected WISE 0855". A stack along its path gives 0.4 mJy at 4.5-5 µm, 4.3 times the control scatter, from 4 usable images: suggestive.
 - "Calibrated SPHEREx spectra". The fluxes are quick aperture sums in Jansky, uncalibrated by us.
 - "It works for any field". It was tested on a handful of real fields (two fast movers, one asteroid, one dwarf planet, one brown dwarf).

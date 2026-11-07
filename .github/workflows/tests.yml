@@ -1,0 +1,49 @@
+# Runs the automatic tests on every push and pull request: the browser-side modules (Node, no install) and the backend (pytest).
+# Neither needs real SPHEREx data or the network: the backend tests make synthetic FITS files on the fly, and the Node tests use
+# synthetic fields and tiny invented maps. (The real-data scripts in scratch/ need the local cutouts and are NOT run here.)
+#
+# Action versions are the ones pages.yml already uses plus setup-node / setup-python v4 / v5, written from memory: if a run says
+# a version does not exist, change it. Python 3.14 is what the backend was tested with; if the runner cannot find it yet,
+# try "3.13".
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    name: Browser-side modules (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run every scratch/test_*.mjs
+        run: |
+          status=0
+          for f in scratch/test_*.mjs; do
+            echo "::group::$f"
+            node "$f" || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+
+  backend:
+    name: Backend (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: pip install -r backend/requirements-dev.txt
+      - run: python -m pytest backend -q

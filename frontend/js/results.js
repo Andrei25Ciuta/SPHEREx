@@ -221,6 +221,31 @@ export function buildCharts(data) {
   ], { domain: [52.55, 52.70], ticks: linTicks(52.55, 52.70, 3, 2), unit: "Distance of Makemake, astronomical units (the fit's 1σ range is the line)",
     legend: [{ shape: "circle", cls: REAL, text: "ephemeris" }, { shape: "diamond", cls: TARGET, text: "fit to 4 detected positions, 1σ range" }] })
     + tableHtml("Makemake distance", ["", "AU"], [["JPL Horizons", fixed(m.horizonsAU)], ["Fit", `${fixed(m.fitAU)} (1σ ${fixed(m.fitLowAU)}–${fixed(m.fitHighAU)})`]]);
+  // 8. how faint can one image go (fake movers injected into real frames)
+  const cal = data.calibration;
+  out.calibrationLimits = dotsHtml(
+    cal.limits.map((l) => ({ label: l.label, points: [{ v: l.flux50, shape: "circle", cls: REAL }, ...(l.flux90 === null ? [] : [{ v: l.flux90, shape: "diamond", cls: TARGET }])] })),
+    { domain: [0.3, 30], log: true, ticks: [0.3, 1, 3, 10, 30].map((v) => ({ v, text: String(v) })), unit: "Total flux of the fake star, mJy (log scale)",
+      legend: [{ shape: "circle", cls: REAL, text: "found 50 % of the time in one image" }, { shape: "diamond", cls: TARGET, text: "found 90 % of the time (never reached in Barnard D2)" }] },
+  ) + tableHtml("Faintest fake star the detector finds in one image", ["Field, detector", "Detector noise / pixel noise", "50 % of fakes found at, mJy", "90 % at, mJy"],
+    cal.limits.map((l) => [l.label, fixed(l.noiseRatio), fixed(l.flux50), l.flux90 === null ? "not reached" : fixed(l.flux90)]));
+
+  // 9. empty-sky calibration of the false-alarm number
+  out.emptySky = dotsHtml(
+    cal.emptySky.fields.map((f) => ({ label: f.label, points: [{ v: f.defaultRule, shape: "circle", cls: REAL }, { v: f.originalRule, shape: "diamond", cls: FALSE }] })),
+    { domain: [0, 100], ticks: linTicks(0, 100, 5, 0), unit: `Share of ${cal.emptySky.copies} scrambled copies of the field that still show a candidate, %`,
+      legend: [{ shape: "circle", cls: REAL, text: "with the rule now used" }, { shape: "diamond", cls: FALSE, text: "with the original rule" }] },
+  ) + tableHtml("Empty-sky test: share of scrambled fields with a candidate", ["Field, detector (images, survey passes)", "Rule now used, %", "Original rule, %"],
+    cal.emptySky.fields.map((f) => [f.label, fixed(f.defaultRule, 1), fixed(f.originalRule, 1)]));
+
+  // 10. could SPHEREx see a Planet X?
+  const px = data.planetX;
+  out.planetX = dotsHtml(
+    px.planets.map((p) => ({ label: p.label, points: [{ v: p.v300, shape: "circle", cls: REAL, text: String(p.v300) }, { v: p.v500, shape: "circle", cls: REAL }, { v: p.v1000, shape: "circle", cls: REAL }] })),
+    { domain: [16, 25], ticks: linTicks(16, 25, 9, 0), unit: "Apparent magnitude V of the planet (fainter to the right)", refs: [{ v: 17, text: "17" }],
+      legend: [{ shape: "circle", cls: REAL, text: "the planet at 300, 500 and 1000 AU, from left to right" }, { shape: "ref", text: "faintest star found in one image (about V 17)" }] },
+  ) + tableHtml("Reflected-light brightness of a distant planet", ["Planet", "V at 300 AU", "V at 500 AU", "V at 1000 AU"],
+    px.planets.map((p) => [p.label, fixed(p.v300, 1), fixed(p.v500, 1), fixed(p.v1000, 1)]));
   return out;
 }
 

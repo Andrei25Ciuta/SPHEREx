@@ -12,7 +12,10 @@ through (about 17 each). The Jansky scale agrees with 2MASS and AllWISE stars to
 a real image **and shown to move** between two images 19.5 hours apart. WISE 0855 gives a **suggestive, not
 established** flux when stacked along its known path, and a blind search cannot find it. The Earth-parallax fit
 recovers the distance of Makemake (52.65 AU against 52.62 AU) **when told where to look**, but the **blind** parallax
-search did **not** find Makemake in the same dots (section 5): the Planet X mode has no real-data success to show.
+search did **not** find Makemake in the same dots (section 5). In a later, fair test (section 12: 11 cutouts of 30′ not centred on it)
+the app's default options again found nothing; loosened options found Makemake at 53.3 AU (truth 52-53), as **one of 38 candidates, when
+an empty field gives about 33**: the Planet X mode has one real recovery, not a result. Calibration on real frames (section 10) and
+the limit for a Planet X (section 11: one image reaches V about 17, a Planet-Nine-like body is 3-5 magnitudes fainter) are new.
 
 ## 1. The data
 
@@ -208,7 +211,8 @@ them), each **centred on the position Horizons gives for that image's time**. Th
 
 ### What it cannot claim
 
-- The blind search has **never succeeded on real data** (above). A real field has no such body to find, and the
+- The blind search had **not succeeded on real data** when this section was written (above); the fair test of section 12 found
+  Makemake once, with loosened options, among about 33 chance candidates. A real field has no such body to find, and the
   simulation and the search share the same ephemeris, so synthetic recovery tests the algorithm, not the ephemeris
   (which was checked separately against the facts above and against Makemake).
 - The Earth's position is the low-precision Sun formula of Meeus (good to ~0.0002 AU), measured from the Sun, not
@@ -303,7 +307,8 @@ and the same stack at 16 **control** positions (the same path shifted by 40 and 
 4. Needs images from at least 3 survey passes about 6 months apart (one detector, or both when "Use all detectors" is on).
 5. Positions only, never brightness: through the variable filter the same star has a different brightness in each image.
 6. Colour hint cannot separate an M dwarf from an early T dwarf (section 3). **Planet X mode: the distance fit
-   works on real data when told where to look, the blind search has not been shown to work on real data** (section 5).
+   works on real data when told where to look; the blind search found Makemake once, with loosened options, as one of 38
+   candidates when an empty field gives about 33** (sections 5 and 12).
 7. Calibration: fluxes are quick aperture sums, 2-10 % below catalogue magnitudes (section 3), not SPHEREx's own
    calibrated photometry.
 8. WISE 0855 is a suggestive stack, not a detection (section 7).
@@ -370,3 +375,208 @@ text says how far the nearest coast is ("water, about 850 km from Brazil").
   readout gave a country or the distance to the nearest coast each time, hovering over the map changed it, and the console
   stayed free of errors. The box sits above Aladin's own zoom control and wraps onto two lines on a phone. Not tried: touch
   panning on a real phone, and the full-screen mode.
+
+## 10. How good is *Find movers*? Calibration on real frames (added 7 Nov 2026, night)
+
+`scratch/calibrate_real.mjs` (the header of the script explains every step). Two experiments on the real cutouts, **no new download**:
+(1) **injection and recovery**: a fake mover (a star with the PSF of the FITS headers, FWHM 5.15″ in D2 and 6.61″ in D6, integrated
+over the pixels, so 100 % of its light falls in the 2-pixel aperture) is added to the real frames along a straight path of known
+speed and flux, placed where the field stars of each image really are (the registration shifts), and the **unchanged** detector
+runs on the result: 40 fakes in each of 10 flux × 6 speed cells per field, 2400 runs per field; (2) **empty-sky calibration**:
+every real frame is rotated/mirrored at random and moved by a random number of pixels, independently of the others, 300 times
+per field: real noise, real star counts, real fluxes, every correspondence between images destroyed, so any candidate is false by
+construction. Fields: Barnard D2 (**18 images**: it had 15 until 22:47, when four more cutouts, fetched by the user's own run of
+`fetch_real_sample.py --target barnard --download 4`, were added to `backend/data/real/`; sections 1-7 were measured on the
+earlier 15), Barnard D6, Epsilon Indi B D2 and D6, WISE 0855 D2 and D6 (63 FITS files in the directory when the runs started).
+
+### What one image can detect
+
+The dot detector compares the peak of the smoothed image with 5 times a noise it estimates itself (84th percentile minus median of
+the smoothed image). In a clean field that is 0.6-1.4 × the plain pixel noise; around a bright, saturated star (Barnard) it is
+**2.9-3.5 ×** it, because the halo thickens the upper tail. So the faintest star found depends on the field:
+
+| field | detector noise / pixel noise | 50 % of fakes found at (total flux) | 90 % at |
+|---|---|---|---|
+| WISE 0855, D2 | 1.43 | **0.63 mJy** (S/N 12.9 in the aperture) | 0.96 mJy (S/N 19.8) |
+| WISE 0855, D6 | 0.63 | 0.86 mJy (S/N 5.6) | 1.34 mJy (S/N 8.8) |
+| Epsilon Indi B, D6 | 0.68 | 0.68 mJy (S/N 6.4) | 1.12 mJy (S/N 10.5) |
+| Epsilon Indi B, D2 (noisier frames) | 1.34 | 1.52 mJy | 3.84 mJy |
+| Barnard, D6 | 2.90 | 7.4 mJy | 12.4 mJy |
+| Barnard, D2 | 3.46 | **21.7 mJy**, 90 % never reached | - |
+
+Next to a real star (9-19 % of the placements had a real dot within 3 px) the fake merges with it; those placements are in the
+recovery table below and left out of this one. Changing the PSF width (sigma) from the headers' 0.36 px to 0.6 px raises the
+clean-field limits by 12-25 % (WISE D2 0.63 → 0.79 mJy at 50 %); letting the flux vary by 0.6-1.4 × from image to image (a stand-in
+for the variable filter) changes nothing measurable (WISE D6: 0.87 and 1.33 mJy). **Two earlier runs with a wrong PSF width (1.3 px,
+then 0.9 px) gave limits 2-3 × too high; the error was found because Makemake is detected at fluxes well below that limit** (next
+section).
+
+### Recovery of a mover: flux and speed
+
+Share of fakes recovered (a candidate whose path is within 1.5 px of the fake's in at least half of the images), default rule. The
+four numbers of a cell go with the four total fluxes of the row:
+
+| field (images, passes, baseline) | total flux (mJy) | 4″/yr | 10″/yr | 30″/yr | 100″/yr |
+|---|---|---|---|---|---|
+| Epsilon Indi B D2 (11, 5, 1.43 yr) | 1.22 / 1.50 / 1.87 / 2.34 | 15 / 48 / 78 / 78 % | 23 / 68 / 95 / 90 % | 10 / 70 / 88 / 85 % | 5 / 73 / 95 / 98 % |
+| WISE 0855 D2 (6, 4, 1.03 yr) | 0.55 / 0.67 / 0.84 / 1.05 | 0 / 3 / 3 / 3 % | 0 / 63 / 68 / 83 % | 8 / 73 / 85 / 75 % | 5 / 68 / 63 / 78 % |
+| WISE 0855 D6 (6, 3, 1.03 yr) | 0.66 / 0.81 / 1.01 / 1.27 | 0 / 0 / 3 / 0 % | 3 / 13 / 70 / 88 % | 0 / 33 / 68 / 80 % | 5 / 28 / 70 / 75 % |
+| Epsilon Indi B D6 (6, 4, 1.41 yr) | 0.56 / 0.69 / 0.86 / 1.08 | 3 / 5 / 28 / 35 % | 3 / 20 / 75 / 78 % | 3 / 10 / 53 / 75 % | 0 / 13 / 58 / 58 % |
+| Barnard D6 (6, 3, 1.02 yr) | 4.5 / 5.5 / 6.9 / 8.6 | 0 / 0 / 3 / 0 % | 5 / 40 / 70 / 80 % | 5 / 18 / 75 / 83 % | 3 / 30 / 53 / 45 % |
+| Barnard D2 (18, 4, 1.08 yr) | 15.5 / 19.1 / 23.9 / 29.9 | 3 / 18 / 15 / 15 % | 23 / 75 / 78 / 85 % | 18 / 73 / 75 / 78 % | 15 / 70 / 70 / 80 % |
+
+- **A sharp threshold**: a factor of about 1.2 in flux takes the recovery from under 25 % to 60-90 %, and it then stays at **70-98 %**
+  in clean fields (45-85 % in the 3-pass fields at 100″/yr). It does not reach 100 % because of blends with real stars, flagged
+  pixels and the rule of dots in 60 % of the images.
+- **A speed floor**: a candidate must move at least 0.8 pixel over the whole baseline (`minMotionPx`), i.e. about 3.5″/yr for 1.4
+  years and 4.9″/yr for 1.0 year. Measured: at 4″/yr almost nothing is found when the baseline is about 1 year (0-3 %) and 78 % when
+  it is 1.43 years (Epsilon Indi B D2); at 1-2″/yr nothing, in any field.
+- **False candidates besides the fake**: 5-23 in 2400 runs per field (0.2-1.0 % per run) with the default rule.
+
+### Empty-sky calibration of the "chance lines expected" number
+
+Share of the 300 scrambled copies of a field that show at least one candidate whose chance-line number is at most f (the
+detector lists a candidate only when it is at most 1):
+
+| field (images, passes) | f = 1e-3 | f = 1e-2 | f = 0.1 | **f = 1 (the default rule)** | original rule (half of the images, no limit) |
+|---|---|---|---|---|---|
+| Barnard D2 (18, 4) | 0 % | 0 % | 0 % | 0 % | 0 % |
+| Epsilon Indi B D2 (11, 5) | 0 % | 0 % | 0 % | 0 % | 1.3 % |
+| Epsilon Indi B D6 (6, 4) | 0 % | 0 % | 0.7 % | **1.3 %** (4/300) | **100 %** |
+| WISE 0855 D2 (6, 4) | 0 % | 0 % | 0 % | 2.0 % (6/300) | **100 %** |
+| Barnard D6 (6, 3) | 0 % | 0 % | 0 % | 11.3 % (34/300) | **95.3 %** |
+| WISE 0855 D6 (6, 3) | 0 % | 0.3 % | 0.3 % | 13.3 % (40/300) | **94.0 %** |
+
+(95 % confidence limit of 0 out of 300: 1.3 %.) What this says:
+
+- **The number is conservative.** If it were exact, a share f of empty fields would show a candidate at most as unlikely as f;
+  the observed shares are at or below f in every cell (for f = 1 an exact number would give up to about 63 %, we see 0-13 %).
+- **The default rule (f ≤ 1) still lets a false candidate through in about 1 empty field in 8 when there are only 3 survey
+  passes and 6 images** (Barnard D6, WISE 0855 D6), 1-2 % with 4 passes, and none with 5 passes or 18 images. A limit of 0.01
+  instead of 1 would hold every field here at 0.3 % or less, and all six real candidates (1e-4 or less) would stay. **That change
+  is not made** (it would be tuned on six fields), but a candidate with a chance-line number above 0.01 should be read as weak.
+- **The test would have predicted the failure that changed the rule.** The original rule (dots in half of the images, no limit)
+  gives a false candidate in **94-100 %** of empty fields of 6 images with 3-4 passes. The real Epsilon Indi B D6 field showed 3
+  of them. So the repair (60 % of the images and the chance-line limit) is now supported by data that were not used to design it.
+
+### Limits of this calibration
+
+Fakes are Gaussians with the headers' FWHM, not the real PSF (121 position-dependent PSFs in each file); the width was wrong in two
+earlier runs. The empty-sky copies destroy real clusters of faint sources and real variable stars, which would add false lines;
+a field star near the centre stays near the centre under rotation. 40 fakes per cell give about ±15 % (95 %) on a share near 50 %.
+Only 49 × 49 pixel (5′) cutouts of six field-detector pairs were used, and the Barnard fields are special (a saturated star).
+**A detector that subtracted a local background before looking for peaks would probably not lose a factor 30 in the Barnard
+fields; that change was not made and not tested.**
+
+## 11. Could SPHEREx see a "Planet X"? A limit from measured noise (added 7 Nov 2026, night)
+
+`node scratch/planet_x_limits.mjs --api http://localhost:8003`. It turns the single-image limit of section 10 (clean fields: 50 % of
+fakes found at **0.63 mJy** and 90 % at **0.96 mJy** total flux in D2, AB 16.9 and 16.4; 0.86 and 1.34 mJy in D6) into a magnitude and
+asks how far a planet of a given size would be found. A planet shines by reflected sunlight (V = H + 5 log10(r·Δ); its diameter
+follows from H and the albedo). **From memory, not checked here:** that relation and its 1329 km constant; the Sun's colour
+(J_AB = V - 0.29); the Earth's radius; and the size, albedo and orbit of the hypothetical Planet Nine (radius 2-4 Earth radii,
+semi-major axis 400-800 AU, perihelion 200-350 AU). Thermal emission is ignored: at 40 K the Planck curve at 4.6 µm is a factor
+e^-78 below its own scale.
+
+| radius, albedo | V at 300 AU | V at 500 AU | V at 1000 AU | farthest AU in one image (50 % / 90 %) | in a stack of 15 / 60 images |
+|---|---|---|---|---|---|
+| 2 R_E, 0.3 | 19.7 | 21.9 | 24.9 | 170 / 153 | 214 / 255 |
+| 3 R_E, 0.3 | 18.8 | 21.0 | 24.0 | 208 / 187 | 263 / 312 |
+| 4 R_E, 0.5 | 17.6 | 19.8 | 22.8 | 273 / 246 | 344 / 410 |
+
+- **A single exposure reaches V ≈ 16.7-17.2**, so a body of 2-4 Earth radii is found only out to about **150-270 AU**. The Planet X
+  mode lists dots found in single images, so that is its range; a hypothetical Planet Nine at 300-800 AU (V about 18-22 for these
+  sizes) is **3-5 magnitudes below** what one exposure shows.
+- Stacking 15 or 60 images along the body's track (noise falls as the square root, so -1.5 and -2.2 magnitudes; the images would
+  have to be shifted along an assumed orbit first, as in the WISE 0855 stack of section 7, which is not what the mode does) pushes
+  the range to 215-410 AU: still short of 500 AU for these sizes. A 3 R_E body at 500 AU is 4 magnitudes below the one-image
+  limit: a plain stack would need about 1500 images.
+- **Check on a real body:** Makemake (Horizons gives V = 17.03-17.14 over the period) was measured in the seven real D2 cutouts:
+  total flux 0.05-0.46 mJy, median 0.21 mJy = AB 18.1, a dot found in 4 of 7 images (at a threshold of 4 σ, not 5). That is about
+  **1 magnitude fainter than a Sun-coloured body of V = 17.1 would be** (J_AB ≈ 16.8) and 3 × below the 50 % limit: the scale is right
+  to the order of magnitude, and Makemake's methane ice, which absorbs inside the D2 band, may account for part of the difference
+  (from memory); this is a consistency check, not a calibration.
+- **What this means for the project:** Planet X mode is a method that works on bodies bright enough to be seen in single images (the
+  Makemake fit; a simulated 600 AU body at a brightness the user sets), **not** a claim that SPHEREx can find a Planet Nine. The
+  honest sentence for the pitch: "a single SPHEREx exposure reaches V ≈ 17; a Planet-Nine-like body is 3-5 magnitudes fainter, so
+  finding it takes stacking along trial orbits, which this tool does not do".
+
+## 12. A fair blind test of Planet X mode on a real body (added 7 Nov 2026, night)
+
+The test of section 5 was biased (every cutout centred on Makemake, only 4 detections). This one removes both problems.
+`scratch/fetch_body_cutouts.py` planned and downloaded (with the user's approval for this idea; 75 MB in all, 6.0-6.4 MB each
+against my estimate of 6.1) **12 D1 cutouts of 30′ × 30′ around Makemake, each cut off its position by a random 3-8′ in each axis**
+(seeded), 4 from each of the 3 survey passes (2025-06, 2025-12/2026-01, 2026-06), chosen **by date only**. D1 (0.75-1.1 µm) was
+picked because a sunlit body should be brighter at shorter wavelengths (an expectation, not checked beforehand); afterwards the
+detections came out stronger than in D2 (S/N 7-19 in 8 of 11 images, against 4-8 in 4 of 7 for the D2 cutouts of section 5). `scratch/blind_planet_x.mjs` runs the app's own `detectSources` (default threshold) and
+`findDistantMovers` on the 11 images the backend serves (the twelfth is a cutout of 85 × 152 px cut by the edge of the image, with
+the body outside it) in a common tangent plane; JPL Horizons' positions are used **only to grade** the candidates.
+
+**The body is a dot** (within 0.5 px of its Horizons position, S/N 7-19 in the detector's units) in **8 of 11** images; in a ninth the
+nearest dot is a bright star 1.0 px (6″) from it (S/N 4595), and in two it is lost (one image of 40 dots and one of 11, mostly cut
+off by the footprint). The images hold 245-324 dots each.
+
+| search | candidates | Makemake among them? | time |
+|---|---|---|---|
+| **the app's default options** (A) | **0** | **no** | 100 s |
+| default options with 250 seed dots per image (B) | 0 | no (the 4 × 10^7 triple limit was reached) | 242 s |
+| **options loosened as in `real_parallax.mjs`** (C: 1 dot per pass enough, 50 % of the dates, rms up to 1.5 px, 4 σ) | **38** | **yes, one of them**: 53.3 AU (1 σ 52.7-53.8), dots in 8 of 11 images, **all 8 within 4 px of Horizons' position** | 285 s |
+
+The geocentric distance of Makemake from Horizons over these dates is 52-53 AU. The other 37 candidates (50.5-66 AU, 6-8 dots)
+**have no dot on the body**: they are chance combinations, and the "σ better than a straight line" the app prints (800-4100 for
+all 38, the body's 3696 ranks second) does not tell them apart. Counting dots, then the rms of the fit, puts the body first
+(8 dots, rms 0.46 px; the other two 8-dot candidates have 1.0 and 1.1 px), **but that ordering was found after seeing the answer**.
+
+**Control: how many chance candidates does the loosened search give in an empty field?** The same 11 images were scrambled 8
+times (each rotated or mirrored and moved at random, independently, so there is no body and no field star where it was) and
+variant C was run on each (`--skipReal 1 --nulls 1 --seed 101..108`, about 9 minutes each, run in parallel):
+
+| copy (seed) | 101 | 102 | 103 | 104 | 105 | 106 | 107 | 108 | the real images |
+|---|---|---|---|---|---|---|---|---|---|
+| candidates | 31 | 41 | 31 | 33 | 29 | 27 | 32 | 37 | **38** |
+| most dots in one candidate | 8 | 7 | 8 | 7 | 7 | 7 | 8 | 8 | **8** |
+| rms of the candidates with the most dots (px) | 0.85, 0.85, 1.04, 1.00 | 0.69-1.23 | 1.04 | 0.62-1.29 | 0.79-1.11 | 0.88-1.21 | 0.94, 0.96 | 0.94 | **0.46 (the body)**, 1.01, 1.12 |
+
+So **an empty field gives 27-41 chance candidates (mean 33) with the loosened options**: the 38 of the real run is what chance alone
+gives, and the body is one of them. What sets it apart in these data is the **fit rms: 0.46 px for the body against 0.85-1.04 px for
+the 8-dot chance candidates of the controls** (7-dot ones go down to 0.62). With 8 controls this is a hint, not a calibrated rule;
+no rule built from it is in the app.
+
+**What this says, and what it does not.**
+- It is the **first time the blind search finds a real body**, and the distance it reports is right (53.3 AU, truth 52-53); but it
+  is one of **38 candidates, and an empty field gives about 33 of them** (control above).
+- It needs the **loosened options**: with the app's defaults it finds nothing, although the body is a dot in 8 of 11 images, at
+  least 2 in every pass, with an rms of 0.46 px. **Which of the changed options makes the difference was not tested**; a suspect is
+  the list of seeds (only the 80 brightest dots that are not still stars in each image start a search, and the body is a dot of
+  modest brightness among 250-320). The app's defaults are therefore too strict for a body like this, and the loosened options
+  return a list in which the body is **1 of 38**.
+- One body, one field, one detector, chosen by date: **not a statistic**, and 11 images with 8 detections is the easy end (V = 17
+  is well above the single-image limit of section 11: a body at 150-250 AU, at the limit, would be seen in far fewer images).
+- Nothing here changes section 11: Planet X mode finds bodies that single images show.
+
+## 13. A first look at "see any object": the dots of one image against 2MASS and AllWISE (added 7 Nov 2026, night)
+
+`node scratch/sources_vs_catalogues.mjs --api http://localhost:8003` (IRSA TAP queries only, nothing downloaded). In the image of
+each real field and detector that has most dots, the app's `detectSources` finds the dots; each is looked up in 2MASS (`fp_psc`,
+epochs 1997-2001) and AllWISE (`allwise_p3as_psd`, 2010) within 8″ (1.3 pixel).
+
+| field, detector | dots | in 2MASS | in AllWISE | in either | **in neither** |
+|---|---|---|---|---|---|
+| Barnard's Star D2 | 9 | 8 | 8 | 8 | **1** |
+| Barnard's Star D6 | 9 | 5 | 5 | 5 | **4** |
+| Epsilon Indi B D2 | 8 | 6 | 6 | 6 | **2** |
+| Epsilon Indi B D6 | 10 | 3 | 3 | 3 | **7** |
+| WISE 0855 D2 | 15 | 13 | 13 | 13 | **2** |
+| WISE 0855 D6 | 9 | 4 | 4 | 4 | **5** |
+| total | 60 | 39 | 39 | 39 | **21** |
+
+- **65 % of the dots are in the catalogues; 35 % are not**, and the share is much higher in D6 (16 of 28 dots) than in D2 (5 of 32).
+- **Four of the 21 are the known fast movers** (Barnard's Star in D2 and D6, Epsilon Indi B in D2 and D6, each at the position it has
+  now, far from where the 1998 and 2010 catalogues put it).
+- **The other 17 were not examined one by one.** What the list shows is that several are bright (tens to thousands of mJy: stars that these
+  catalogues should hold) with the nearest catalogue source 11-57″ away, and that several lie within 12 pixels of the image edge. That
+  points to artefacts (the FITS headers count ghosts, halos of bright stars and snowballs) and to proper motion rather than to
+  new objects; **none was shown to be anything new**.
+- So **"not in 2MASS or AllWISE" is not a useful definition of "unknown"** on its own: it needs at least a check of the quality flags
+  and of bright-star halos, the proper motion from SIMBAD carried to the image date, and a detection in three or more images.
+  The same dots could be seen in the other bands, too: a "see anything" mode is a larger piece of work than a new button.

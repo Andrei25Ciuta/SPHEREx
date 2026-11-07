@@ -48,6 +48,13 @@ check("text is escaped", esc('<b a="1">&\'') === "&lt;b a=&quot;1&quot;&gt;&amp;
   check("kept lines are below 1 chance line, the false lines above it", data.movers.runs.every((r) => r.chanceLines < 1) && data.movers.originalRule.realChanceLines < 1 && data.movers.originalRule.falseChanceLines.every((v) => v > 1));
   check("Jansky: the median lies inside its 16th-84th percentile", data.jansky.every((j) => j.p16 <= j.median && j.median <= j.p84));
   check("Arosa: the speed is the distance over the time", near(data.arosa.movedArcsec / data.arosa.hours, data.arosa.arcsecPerHour, 0.15));
+  check("calibration: the 90 % limit is above the 50 % one, shares are percentages, the original rule is never better than the one now used",
+    data.calibration.limits.every((l) => l.flux90 === null || l.flux50 < l.flux90) && data.calibration.emptySky.fields.every((f) => f.defaultRule >= 0 && f.originalRule <= 100 && f.defaultRule <= f.originalRule));
+  { const t = data.makemake.fairTest, lo = t.loosenedOptions;
+    check("fair test: nothing with the default options, the body is 1 candidate among many, as many as an empty field gives, and its distance is inside the ephemeris range plus its error",
+      t.defaultOptions.candidates === 0 && lo.foundTheBody === 1 && lo.candidates >= t.emptyFieldCandidates[0] && lo.candidates <= t.emptyFieldCandidates[1]
+      && lo.bodyLowAU <= lo.bodyAU && lo.bodyAU <= lo.bodyHighAU && lo.bodyLowAU <= t.truthAU[1] && lo.bodyHighAU >= t.truthAU[0] && t.bodyDetectedIn <= t.imageCount); }
+  check("Planet X: a planet is fainter the farther it is, and the one-image limit is a range", data.planetX.planets.every((p) => p.v300 < p.v500 && p.v500 < p.v1000) && data.planetX.oneImageV[0] < data.planetX.oneImageV[1]);
   check("Makemake: the fit range contains the fit, and the ephemeris is inside it",
     data.makemake.fitLowAU <= data.makemake.fitAU && data.makemake.fitAU <= data.makemake.fitHighAU && data.makemake.fitLowAU <= data.makemake.horizonsAU && data.makemake.horizonsAU <= data.makemake.fitHighAU);
   check("the blind search is reported as failed (0 of the candidates is the body)", data.makemake.blind.foundTheBody === 0 && data.makemake.blind.candidates > 0);
@@ -87,6 +94,10 @@ check("text is escaped", esc('<b a="1">&\'') === "&lt;b a=&quot;1&quot;&gt;&amp;
   need(`${data.makemake.fitAU}`); need(`${data.makemake.horizonsAU}`); need(`${data.arosa.movedArcsec}″ in ${data.arosa.hours} hours`);
   for (const r of data.arosa.rows) if (r.fluxMilliJy !== null) need(`${r.fluxMilliJy.toFixed(2)} ± ${r.err.toFixed(2)} mJy`);
   need("2 477 413"); need("60 files, 279 MB");
+  for (const l of data.calibration.limits) need(`${l.flux50} mJy`);
+  need(`${data.makemake.fairTest.loosenedOptions.bodyAU} AU`); need(`${data.makemake.fairTest.emptyFieldCandidates[0]}-${data.makemake.fairTest.emptyFieldCandidates[1]} chance candidates`);
+  for (const f of data.calibration.emptySky.fields) { if (f.defaultRule >= 1) need(`${f.defaultRule.toFixed(1)} %`); if (f.originalRule >= 90) need(`${f.originalRule.toFixed(1)} %`.replace("100.0 %", "100 %")); }
+  for (const p of data.planetX.planets) need(`| ${p.v300.toFixed(1)} | ${p.v500.toFixed(1)} | ${p.v1000.toFixed(1)} |`);
   check("every headline number of the data file also stands in docs/VALIDATION.md", miss.length === 0, miss.join(" | "));
 }
 
@@ -121,7 +132,8 @@ check("charts that draw bars or dots are hidden from screen readers (the table s
   const missingLabels = [...HTML.matchAll(/aria-labelledby="([^"]+)"/g)].map((m) => m[1]).filter((id) => !ids.includes(id));
   check("every #anchor and aria-labelledby points at an id", missingAnchors.length === 0 && missingLabels.length === 0, [...missingAnchors, ...missingLabels].join(", "));
   check("one h1, a lang, a viewport, a skip link and a way back to the app", (HTML.match(/<h1[ >]/g) || []).length === 1 && /<html lang="en">/.test(HTML) && /name="viewport"/.test(HTML) && HTML.includes('class="skip-link"') && HTML.includes('href="index.html"'));
-  check("the page says the images are not published, and shows the failure of the blind Planet X search", /No SPHEREx image or pixel is published/.test(HTML) && /blind search failed/i.test(HTML) && /has not been shown to work on real data/.test(HTML));
+  check("the page says the images are not published, shows the failure of the first blind Planet X search and the limits of the fair one",
+    /No SPHEREx image or pixel is published/.test(HTML) && /blind search failed/i.test(HTML) && /A fair test/.test(HTML) && /default options the search found nothing/.test(HTML) && /not yet a result/.test(HTML));
   check("the status line and the module are there", HTML.includes('id="results-status"') && HTML.includes('src="js/results.js"') && HTML.includes("data-limits"));
 }
 

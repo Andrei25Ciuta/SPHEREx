@@ -36,7 +36,7 @@
         <li><b><span data-n="summary.minDifference" data-fmt="fixed:2"></span>&ndash;<span data-n="summary.maxDifference" data-fmt="fixed:2"></span>″/yr</b><span>distance from the catalogue motion</span></li>
         <li><b><span data-n="arosa.movedArcsec"></span>″</b><span>an asteroid moved in <span data-n="arosa.hours"></span> hours, seen in two images</span></li>
         <li><b><span data-n="makemake.fitAU" data-fmt="fixed:2"></span> AU</b><span>Makemake from a fit, against <span data-n="makemake.horizonsAU" data-fmt="fixed:2"></span> from the ephemeris</span></li>
-        <li><b><span data-n="makemake.blind.foundTheBody"></span> of <span data-n="makemake.blind.candidates"></span></b><span>candidates of the blind Planet X search were Makemake</span></li>
+        <li><b><span data-n="makemake.fairTest.loosenedOptions.foundTheBody"></span> of <span data-n="makemake.fairTest.loosenedOptions.candidates"></span></b><span>candidates of a fair blind Planet X search were Makemake; an empty field gives <span data-n="makemake.fairTest.emptyFieldCandidates.0"></span>&ndash;<span data-n="makemake.fairTest.emptyFieldCandidates.1"></span></span></li>
       </ul>
     </section>
 
@@ -154,12 +154,70 @@
       <p class="rcaveat"><strong>The blind search failed.</strong> Run with no ephemeris on all <span data-n="makemake.blind.dots"></span> dots of the cutouts, it returned
         <span data-n="makemake.blind.candidates"></span> candidates at 52&ndash;54 AU, and <strong><span data-n="makemake.blind.foundTheBody"></span> of them is Makemake</strong>.
         The cutouts are centred on the body, so any dot near a centre follows its parallax track, and the body was detected in only <span data-n="makemake.detections"></span> of <span data-n="makemake.imageCount"></span> images, which lets chance
-        combinations fit as well. A fair test needs cutouts not centred on the body and more detections. <strong>The blind Planet X search has not been shown to work on real data.</strong></p>
+        combinations fit as well. That first test was biased; a fair one followed.</p>
+      <p class="rcaveat"><strong>A fair test.</strong> <span data-n="makemake.fairTest.imageCount"></span> new cutouts of <span data-n="makemake.fairTest.cutoutArcmin"></span>′ (4 from each survey pass, chosen by date only), each cut a random 3&ndash;8′ off Makemake's position,
+        so the body is somewhere in a field of about 300 dots. Makemake is a dot in <span data-n="makemake.fairTest.bodyDetectedIn"></span> of them. <strong>With the app's default options the search found nothing</strong>
+        (<span data-n="makemake.fairTest.defaultOptions.candidates"></span> candidates). <strong>With loosened options it found Makemake</strong>: <span data-n="makemake.fairTest.loosenedOptions.bodyAU" data-fmt="fixed:1"></span> AU
+        (1&sigma; <span data-n="makemake.fairTest.loosenedOptions.bodyLowAU" data-fmt="fixed:1"></span>&ndash;<span data-n="makemake.fairTest.loosenedOptions.bodyHighAU" data-fmt="fixed:1"></span>) against
+        <span data-n="makemake.fairTest.truthAU.0"></span>&ndash;<span data-n="makemake.fairTest.truthAU.1"></span> AU from the ephemeris, with all <span data-n="makemake.fairTest.loosenedOptions.bodyDots"></span> of its dots on the body &mdash;
+        <strong>but as one of <span data-n="makemake.fairTest.loosenedOptions.candidates"></span> candidates</strong>. The same images scrambled (no body) give
+        <span data-n="makemake.fairTest.emptyFieldCandidates.0"></span>&ndash;<span data-n="makemake.fairTest.emptyFieldCandidates.1"></span> chance candidates, so the list is mostly chance. What sets the body apart here is a tighter fit
+        (<span data-n="makemake.fairTest.loosenedOptions.bodyRmsPx" data-fmt="fixed:2"></span> px, against 0.85&ndash;1.04 px for the 8-dot chance candidates of 8 controls): a hint, not a rule. One body, one field, V = 17: far brighter than a Planet-Nine-like body (section 10).
+        <strong>The blind search has found a real body once; that is not yet a result.</strong></p>
     </section>
 
     <!-- 8 -->
     <section class="panel rsec" aria-labelledby="r8">
-      <h2 id="r8">8. What this does not show</h2>
+      <h2 id="r8">8. How faint can it go? Fake movers in real images</h2>
+      <p>To learn what the detector can and cannot see, fake moving stars of known brightness and speed were added to the <strong>real</strong> images
+        (with the star shape given in the FITS headers) and the unchanged detector was run: <span data-n="calibration.fakesPerCell"></span> fakes for every brightness and
+        speed, 2400 per field. The chart shows the total flux at which <em>one image</em> finds the fake half of the time and nine times in ten.</p>
+      <figure class="rfig">
+        <figcaption>Faintest fake star found in a single image</figcaption>
+        <div data-chart="calibrationLimits"></div>
+      </figure>
+      <p>In a clean field one image finds a star down to <strong><span data-n="calibration.limits.0.flux50" data-fmt="fixed:2"></span>&ndash;<span data-n="calibration.limits.1.flux50" data-fmt="fixed:2"></span> mJy</strong>
+        half of the time. <strong>Around a very bright, saturated star (Barnard's Star) the limit is 20&ndash;30 times worse</strong> (<span data-n="calibration.limits.5.flux50" data-fmt="fixed:1"></span> mJy in D2): the detector's own noise estimate is
+        about <span data-n="calibration.limits.5.noiseRatio" data-fmt="fixed:1"></span> times the pixel noise there, because the star's halo thickens the upper tail. Above the limit a fake that moves
+        more than about 0.8 pixel over the whole period (about 3.5″ a year over 1.4 years) is recovered 70&ndash;98 % of the time; below it almost never.</p>
+      <p class="rcaveat"><strong>Limits of this test.</strong> Gaussian fakes, not the real star shape; six field and detector pairs of 5′ cutouts; about ±15 % on a share near 50 %.
+        Two earlier versions of it used a star shape that was too broad and gave limits 2&ndash;3 times too high; Makemake, which the detector finds at fluxes well below those limits, exposed the mistake.</p>
+    </section>
+
+    <!-- 9 -->
+    <section class="panel rsec" aria-labelledby="r9">
+      <h2 id="r9">9. Is the &ldquo;chance lines&rdquo; number honest? Empty-sky test</h2>
+      <p>Every real image was rotated or mirrored at random and moved by a random number of pixels, independently of the others, <span data-n="calibration.emptySky.copies"></span> times per field. Real noise and real star counts stay,
+        but nothing links one image to the next, so <strong>any candidate is false by construction</strong>. The chart shows how often the detector would still list one.</p>
+      <figure class="rfig">
+        <figcaption>Empty fields that still show a candidate</figcaption>
+        <div data-chart="emptySky"></div>
+      </figure>
+      <p>The number is <strong>conservative</strong>: the observed shares are never above what the number promises. But with only 3 survey passes and 6 images, <strong>about 1 empty field in 8 still shows a false candidate</strong> under
+        the limit now used (<span data-n="calibration.emptySky.fields.4.defaultRule" data-fmt="fixed:1"></span> % and <span data-n="calibration.emptySky.fields.5.defaultRule" data-fmt="fixed:1"></span> %); a stricter limit of 0.01 instead of 1 would hold every field here at 0.3 % or less
+        and keep all six real candidates, but <strong>that change was not made</strong>. The original rule that failed on Epsilon Indi B gives a false candidate in 94&ndash;100 % of empty fields of 6 images with 3&ndash;4 passes:
+        the test would have predicted that failure before it happened.</p>
+      <p class="rcaveat"><strong>Not covered:</strong> real variable stars and real clusters of faint sources, which the scrambling removes.</p>
+    </section>
+
+    <!-- 10 -->
+    <section class="panel rsec" aria-labelledby="r10">
+      <h2 id="r10">10. Could SPHEREx see a &ldquo;Planet X&rdquo;?</h2>
+      <p>A distant planet shines only by reflected sunlight. From the limit of section 8, one image shows stars down to about V = <span data-n="planetX.oneImageV.0" data-fmt="fixed:1"></span>&ndash;<span data-n="planetX.oneImageV.1" data-fmt="fixed:1"></span>.
+        The chart compares that with what a planet of 2 to 4 Earth radii would be at 300, 500 and 1000 AU.</p>
+      <figure class="rfig">
+        <figcaption>Brightness of a distant planet against what one image can show</figcaption>
+        <div data-chart="planetX"></div>
+      </figure>
+      <p>A body of that size is found in single images only out to about <strong><span data-n="planetX.farthestAuOneImage.0"></span>&ndash;<span data-n="planetX.farthestAuOneImage.1"></span> AU</strong>. A hypothetical Planet Nine at 300&ndash;800 AU is
+        <strong>3&ndash;5 magnitudes too faint</strong> for that. Adding up 60 images along its track would gain about 2 magnitudes and still fall short at 500 AU. So Planet X mode is a method that works on bodies bright
+        enough to be seen in single images (Makemake, a simulated body), <strong>not a claim that SPHEREx can find a Planet Nine</strong>.</p>
+      <p class="rcaveat"><strong>From memory, not checked:</strong> the relation between brightness, size and albedo, the colour of the Sun, and the size and orbit of Planet Nine. Makemake itself, measured in the real images, comes out about one magnitude fainter than that formula says: the scale is right to the order of magnitude.</p>
+    </section>
+
+    <!-- 11 -->
+    <section class="panel rsec" aria-labelledby="r11">
+      <h2 id="r11">11. What this does not show</h2>
       <ul class="rlimits" data-limits></ul>
       <h3>Reproduce it</h3>
       <p>The commands are in <a href="https://github.com/mateibut/SPHEREx/blob/main/docs/VALIDATION.md">docs/VALIDATION.md</a>. They need the real cutouts, which are not published
