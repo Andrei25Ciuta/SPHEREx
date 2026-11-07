@@ -465,6 +465,31 @@ html.fs-locked { overflow: hidden; }
 .track-info:empty { display: none; }
 .track-info::before { content: "◆ "; color: #FBE9D0; }
 
+/* Find movers: button + status, ranked list, details of the selected candidate */
+.movers { margin-top: .9rem; padding-top: .8rem; border-top: 1px solid var(--border); }
+.movers-head { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem .9rem; }
+.movers-head .btn-primary { width: auto; padding: .55rem 1.1rem; }
+.movers-status { flex: 1 1 14rem; margin: 0; font-size: .85rem; color: var(--text-muted); }
+.mover-list { list-style: none; margin: .7rem 0 0; padding: 0; display: grid; gap: .4rem; }
+.mover-item {
+  display: grid; grid-template-columns: auto 1fr; column-gap: .75rem; align-items: baseline;
+  width: 100%; text-align: left; font: inherit; cursor: pointer;
+  padding: .55rem .8rem; border-radius: var(--radius-sm);
+  color: var(--text); background: var(--raised); border: 1px solid var(--border);
+  transition: border-color .2s, background .2s;
+}
+.mover-item:hover { border-color: var(--accent); background: rgb(var(--accent-rgb) / .12); }
+.mover-item[aria-pressed="true"] { border-color: var(--accent); background: rgb(var(--accent-rgb) / .22); }
+.mover-rank { grid-row: 1 / span 2; font-family: var(--display); font-weight: 700; font-size: 1.15rem; color: var(--accent-hi); }
+.mover-main { font-weight: 600; }
+.mover-sub { font-size: .8rem; color: var(--text-muted); }
+.mover-detail {
+  margin-top: .6rem; padding: .7rem .8rem; font-size: .85rem;
+  border-left: 3px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: rgb(var(--accent-rgb) / .08);
+}
+.mover-detail p { margin: 0 0 .55rem; }
+
 /* =========================================================
    8. Hero header (photo banner)
    ========================================================= */

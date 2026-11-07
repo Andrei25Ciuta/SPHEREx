@@ -47,11 +47,23 @@ async function answers(url) {
   }
 }
 
+const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]", ""];
+/**
+ * A backend "on this machine" is only reachable from a page that is also on this machine.
+ * On a public page (GitHub Pages) we must not poke at localhost: browsers may even ask the
+ * visitor for permission to reach devices on their network.
+ */
+function backendMayExist() {
+  let backendHost = location.hostname;                       // API_BASE = "" means the page's own server
+  try { if (API_BASE) backendHost = new URL(API_BASE).hostname; } catch { /* keep the page's host */ }
+  return !(LOCAL_HOSTS.includes(backendHost) && !LOCAL_HOSTS.includes(location.hostname));
+}
+
 /** First picture source that answers: ESA's mirror, then our backend (IRSA), then CDS. */
 async function pickSource() {
   if (SKY_TILES !== "auto") return SOURCES.includes(SKY_TILES) ? SKY_TILES : "cds";
   if (await answers(`${ESA_HIPS}/DSSColor/properties`)) return "esa";
-  if (await answers(`${API_BASE}/api/health`)) return "backend";
+  if (backendMayExist() && await answers(`${API_BASE}/api/health`)) return "backend";
   return "cds";
 }
 

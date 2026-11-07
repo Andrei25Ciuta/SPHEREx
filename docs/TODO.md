@@ -37,7 +37,7 @@ de start [parțial confirmat: nu am găsit textul exact, nu știu cum se aplică
 - [ ] **P0** Confirmă că ești **înregistrat** în hackathon, că ai ales evenimentul local corect și dacă ai echipă / cine e în ea.
 - [x] **P0 – REGULA ANULATĂ de tine (7 nov, „anuleaza regula”):** regula „nu dezvoltăm nimic înainte de 14 nov 2026, 09:00” (pusă mai devreme în aceeași zi) a fost **anulată**; dezvoltarea în mock continuă. **Riscul de eligibilitate rămâne**: regula oficială nu e confirmată, iar proiectul a început pe 5 nov, înainte de hackathon. Păstrează **istoricul cinstit** (README, CLAUDE.md) și declară folosirea AI la predare. Întrebarea către organizatori (Anexa A) rămâne utilă.
 - [x] **Poza din header (7 nov):** poza dată de tine venea dintr-un **clip stock de la Getty Images** (conținut cu licență plătită, deci nu poate fi publicată). A fost **înlocuită cu o nebuloasă generată de noi** (`scratch/make_nebula.py`; nu folosește pixeli de la nimeni; culorile au fost doar eșantionate din poza de referință). Fișierele derivate din clipul Getty au fost **scoase din proiect** și sunt într-un folder de rezervă în afara repo-ului (`scratchpad/getty_derived_backup/`); **nu le publica**.
-- [ ] **P1** În `CREDITS`: „Header and page background images: generated procedurally by the author (`scratch/make_nebula.py`); not SPHEREx data”. Dacă preferi o imagine reală NASA în loc de una generată, verifică licența pe pagina fiecărei imagini.
+- [x] **P1** (făcut în `CREDITS.md`, 2026-11-07) În `CREDITS`: „Header and page background images: generated procedurally by the author (`scratch/make_nebula.py`); not SPHEREx data”. Dacă preferi o imagine reală NASA în loc de una generată, verifică licența pe pagina fiecărei imagini.
 - [ ] **P0** (rămâne util dacă vrei să reutilizezi cod) Decide după răspuns:
   - dacă prototipul e acceptat → continui cu secțiunile 2–6;
   - dacă nu → nu depui codul existent; începi pe 14 nov (decizia și riscul sunt ale tale; întreabă organizatorii ce e permis să refolosești: idei, documentație, cunoștințe).
@@ -52,6 +52,8 @@ de start [parțial confirmat: nu am găsit textul exact, nu știu cum se aplică
 - [ ] **P1** Rulează toate testele (`node scratch/test_*.mjs`) înainte de fiecare commit.
 
 ### 2.2 Date reale (ultimul pas, dar cel mai important pentru „Validity”)
+
+> **Actualizare 7 nov:** scriptul `backend/scripts/fetch_real_sample.py` + ghidul [REAL_DATA_TEST.md](REAL_DATA_TEST.md) sunt gata (86 de teste offline). **Pasul A (doar căutare, fără descărcare) rulat: merge, iar toate cele 5 obiecte au date reale** (tabel în [IRSA_FACTS.md](IRSA_FACTS.md) §8b). **Următorul pas, la utilizator (8 nov dimineața):** `--target barnard --download 1`, apoi lipit raportul în chat. După el: adaptat `query.py`, sursa de date IRSA în backend, Find movers pe date reale.
 
 > **Actualizare 6 nov:** documentația IRSA e publică; vezi [IRSA_FACTS.md](IRSA_FACTS.md). **Metoda de acces e cunoscută** (TAP + cutout server-side, colecții `spherex_qr2` / `spherex_qr3`). Punctele de mai jos rămân ca listă de lucru, dar **„găsește metoda de acces” și „definiția biților de flag” sunt rezolvate în documentație**; rămân de făcut implementarea și validarea pe date reale. Primul pas concret (permis ca pregătire): **rulezi tu o interogare TAP** din documentație pentru WISE 0855 și ne spui câte imagini sunt pe detector.
 - [ ] **P1** Găsește un fișier SPHEREx real (documentația IRSA / tab-ul Resources al provocării / forumul). Nu ghici URL-uri.
@@ -72,7 +74,7 @@ de start [parțial confirmat: nu am găsit textul exact, nu știu cum se aplică
 ### 2.3 Funcții noi (ordonate după impact / efort)
 - [ ] **P2** **Demo ghidat „Try the demo”** (~2–3 h): încarcă WISE 0855, explică mișcarea proprie, pornește blink, trece la Difference, arată traiectoria prezisă.
 - [ ] **P2** **Secțiunea „About / Explain it to me”** (~2–3 h): ce e SPHEREx, de ce funcționează blink-ul, mover vs variabilă vs artefact, de ce un mover nu e automat Planet X.
-- [ ] **P2** **„Find Movers”** (~8–12 h): puncte în poziții diferite între treceri → aliniere / traiectorie → viteză (″/an) și direcție → listă clasată → click = deschide în blink. Începe simplu (geometrie), fără rețele neuronale. Include **mișcări mari** (paralaxa unui obiect îndepărtat dă sute de secunde de arc între două treceri la 6 luni – estimarea mea, neverificată).
+- [x] **P2** **„Find Movers”** (v1 făcut 2026-11-07, `frontend/js/features/movers.js`, teste `scratch/test_movers.mjs`): puncte în poziții diferite între treceri → traiectorie → viteză (″/an) și direcție → listă clasată → click = traseul pe blink + „Check in sky map". Geometrie, fără rețele neuronale. **Rămas / limite:** (a) doar poziții, nu luminozitate (filtrul variabil schimbă luminozitatea între imagini); (b) are nevoie de ≥ 3 treceri; (c) mișcare < ~1 px peste perioadă = ca o stea fixă; (d) nu e testat pe date reale; (e) **mișcări mari** (paralaxa unui obiect îndepărtat dă sute de secunde de arc între două treceri la 6 luni – estimarea mea, neverificată) sunt la limita setării `maxSpeedPxPerYear = 60`; (f) potrivirea cu obiecte cunoscute folosește doar cele 5 obiecte de test, nu un catalog.
 - [ ] **P2** **Potrivire cu SIMBAD**: „cunoscut” / „posibil cunoscut” / „necunoscut”; un candidat necunoscut nu e automat o planetă nouă.
 - [ ] **P3** Scor de încredere pentru candidați (~3–5 h).
 - [ ] **P3** Estimator de clasă spectrală din raportul flux 4–5 µm vs lungimi de undă mici (~2 h; semnalează pitici brune reci).
@@ -85,7 +87,7 @@ de start [parțial confirmat: nu am găsit textul exact, nu știu cum se aplică
 
 ## 3. Cod – calitate, securitate, testare
 
-- [ ] **P1** **Teste automate backend (pytest)**: fotometrie (stea injectată), `cutout` (orientare, margini), `hips_proxy` (allowlist, `..`, căi codificate, surse externe), `query` (fișier lipsă / corupt).
+- [x] **P1** **Teste automate backend (pytest)** (făcut 2026-11-07, `backend/tests/`, 57 de teste): fotometrie (stea injectată), `cutout` (orientare, margini, cadre rotite), `stretch`, `hips_proxy` (allowlist, `..`, căi codificate, retry), `query` (fișier lipsă / corupt). **Rămas:** stratul HTTP din `backend/app.py` (nu e testat; `TestClient` cere un pachet pe care nu l-am instalat fără să-l verific).
 - [ ] **P1** Cazuri-limită în teste: RA aproape de 0°/360° (359,99° → 0°), poli (±89°), FOV 1 și 30′, **un singur cadru**, **zero cadre**, imagini de dimensiuni diferite, URL cu parametri invalizi, API lent / căzut.
 - [ ] **P1** Test cu cadre cu mulți NaN (fișier FITS sintetic).
 - [ ] **P2** Restrânge CORS de la `*` la originile necesare (frontend-ul public), după ce știi unde găzduiești.
@@ -100,9 +102,9 @@ de start [parțial confirmat: nu am găsit textul exact, nu știu cum se aplică
 
 ## 4. Documentație
 
-- [ ] **P1** `LICENSE` (MIT sau Apache-2.0; cerința de licență pentru 2026 e **[neconfirmată]**, dar repo-ul public are nevoie de una). Verifică în termeni ce licență acorzi.
+- [x] **P1** `LICENSE` (MIT, pus 2026-11-07, „Copyright (c) 2026 mateibut" – schimbă cu numele tău dacă vrei). **Încă de verificat:** cerința de licență pentru 2026 e **[neconfirmată]**; Aladin Lite e GPL-3 și e încărcat la rulare (vezi `CREDITS.md`) – întreabă/verifică dacă afectează licența aleasă.
 - [ ] **P1** **README**: captură + **GIF animat** cu WISE 0855 în Blink și Difference; ce face, cum rulezi (mock și backend), limitări, proveniența datelor (real vs mock) – la început, nu la sfârșit.
-- [ ] **P1** **`CREDITS.md` / „Sources”** [termenii cer citarea tuturor surselor, chiar open-source]:
+- [x] **P1** **`CREDITS.md` / „Sources”** (primă versiune 2026-11-07; verifică formulările exacte de mulțumire pe paginile arhivelor înainte de predare) [termenii cer citarea tuturor surselor, chiar open-source]:
   - date: SPHEREx / NASA IPAC IRSA, 2MASS, AllWISE, DSS2 (copii HiPS IRSA, originale CDS), SIMBAD (mirror Harvard);
   - coordonatele obiectelor test: referințele din `frontend/js/targets.js` (Gaia DR3 / `2020yCat.1350`, Kirkpatrick+2021 `2021ApJS..253....7K`, Vallenari+ `2007A&A...474..653V`);
   - biblioteci: FastAPI, uvicorn, astropy, numpy, Pillow, Plotly 2.35.2, Aladin Lite 3.6.5;
@@ -123,7 +125,7 @@ de start [parțial confirmat: nu am găsit textul exact, nu știu cum se aplică
 ## 5. Repo și găzduire
 
 - [ ] **P1** Repo GitHub **public**, cu istoric curat (commit-uri cu mesaje clare); verifică să nu urce `.venv`, `cache`, `data`, chei sau parole.
-- [ ] **P1** **Demo public** fără instalare. GitHub Pages găzduiește doar frontend-ul static → rulează pe **mock**; **trebuie etichetat** ca „date sintetice”, nu ca serviciu SPHEREx real.
+- [ ] **P1** **Demo public** fără instalare. GitHub Pages găzduiește doar frontend-ul static → rulează pe **mock**; **trebuie etichetat** ca „date sintetice”, nu ca serviciu SPHEREx real. **Pregătit 2026-11-07, NEPUBLICAT:** `.github/workflows/pages.yml` + insigna din antet scrie „Synthetic demo data". Rămâne la tine: repo pe GitHub, push, *Settings → Pages → Source: GitHub Actions*.
 - [ ] **P2** Dacă vrei date reale în demo online: backend găzduit separat (ex. un serviciu Python) – atenție la CORS, memorie, limite de plan gratuit, timp de pornire la rece. Altfel: GIF/video cu date reale + demo pe mock.
 - [ ] **P1** Testează linkul demo dintr-o **fereastră anonimă** și pe telefon.
 - [ ] **P2** Adaugă descriere, subiecte (topics) și un link către demo în pagina repo-ului.

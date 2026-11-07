@@ -38,6 +38,8 @@ export class BlinkPlayer {
     this.marker = null;     // { fx, fy, rPx } in image fractions – the measuring aperture
     this.tracks = [];       // predicted positions of known objects: [{ label, points: [{fx, fy}] }]
     this.showTracks = true;
+    this.candidates = [];   // movers found by "Find movers": [{ label, points: [{ fx, fy }] }], one point per frame
+    this.selectedCandidate = -1;
     this.lastTick = 0;
     this.rafId = null;
 
@@ -59,6 +61,8 @@ export class BlinkPlayer {
     this.flagImages = [];
     this._grey = null;
     this._derived = {};
+    this.candidates = [];                           // they belong to the old frames
+    this.selectedCandidate = -1;
     let done = 0;
     onProgress(0, frames.length);
     const images = await Promise.all(frames.map((f) =>
@@ -91,6 +95,14 @@ export class BlinkPlayer {
   /** tracks[i].points[k] = predicted position at the date of frame k (same order as frames). */
   setTracks(tracks) { this.tracks = tracks || []; this.draw(); }
   setShowTracks(on) { this.showTracks = !!on; this.draw(); }
+  /** candidates[i].points[k] = where candidate i is on frame k's date (fractions, like tracks). */
+  setCandidates(candidates, selected = -1) {
+    this.candidates = candidates || [];
+    this.selectedCandidate = selected;
+    this.draw();
+  }
+  /** Grey pixels (0..255) of every frame, or null if the browser will not let us read them. */
+  greyFrames() { return this._greys(); }
 
   /** Show frame i (wraps around, so goTo(-1) = last frame). */
   goTo(i) {
@@ -126,6 +138,7 @@ export class BlinkPlayer {
     }
 
     if (this.showTracks && this.tracks.length) this._drawTracks();
+    if (this.candidates.length) this._drawCandidates();
     if (this.marker) this._drawMarker();
   }
 
@@ -317,6 +330,42 @@ export class BlinkPlayer {
       if (ly < 16) ly = cy + 32;
       ctx.fillText(text, Math.max(6, lx), Math.min(H - 6, ly));
     }
+    ctx.restore();
+  }
+
+  /**
+   * Movers found by "Find movers": an orange ring around each one at the date on screen, its
+   * number beside it, and – for the selected one – its whole path (dashed) with a dot per date.
+   * Orange stays visible on the grey images; the predicted tracks of known objects are cream.
+   */
+  _drawCandidates() {
+    const { ctx, canvas } = this;
+    const W = canvas.width, H = canvas.height;
+    ctx.save();
+    ctx.shadowColor = "#000"; ctx.shadowBlur = 3;
+    ctx.font = "700 13px Inter, system-ui, sans-serif";
+    this.candidates.forEach((c, i) => {
+      const pts = c.points.map((p) => [p.fx * W, p.fy * H]);
+      if (!pts.length) return;
+      const selected = i === this.selectedCandidate;
+      const [x, y] = this.isAnimated ? (pts[this.index] ?? pts[0]) : pts.at(-1);
+      ctx.strokeStyle = ctx.fillStyle = selected ? "#F4806A" : "#EA4F39";
+
+      if (selected) {
+        ctx.globalAlpha = 0.85; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        pts.forEach(([px, py], k) => (k ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+        ctx.stroke();
+        ctx.setLineDash([]);
+        for (const [px, py] of pts) { ctx.beginPath(); ctx.arc(px, py, 2.2, 0, 2 * Math.PI); ctx.fill(); }
+      }
+      ctx.globalAlpha = 1; ctx.lineWidth = selected ? 3 : 2;
+      ctx.beginPath(); ctx.arc(x, y, 12, 0, 2 * Math.PI); ctx.stroke();
+
+      const tw = ctx.measureText(c.label).width;
+      const lx = x + 16 + tw > W - 4 ? x - 16 - tw : x + 16;
+      ctx.fillText(c.label, lx, Math.max(14, y - 14));
+    });
     ctx.restore();
   }
 

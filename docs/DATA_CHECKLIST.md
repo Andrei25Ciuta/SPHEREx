@@ -73,4 +73,5 @@ file says otherwise, change the CONFIG block in `backend/spherex/query.py` (one 
 - [ ] Dimensiunea maximă a cutout-ului și limitele de rată.
 - [ ] Termenii de utilizare / citarea datelor SPHEREx.
 - [ ] Scara pixelilor din WCS pe un fișier real (documentația sugerează ~6,15″).
-- [ ] Care din cele 5 obiecte test au cel puțin 2 epoci pe același detector (interogare TAP).
+- [x] Care din cele 5 obiecte test au cel puțin 2 epoci pe același detector (interogare TAP). **Toate**: ≥ 3 treceri pe aproape orice detector (R Draconis: D3 și D6 doar 2). Tabel în `IRSA_FACTS.md` §8b.
+- [ ] **Test cu fișiere reale** (cutout-uri): ghid și script în `docs/REAL_DATA_TEST.md`. Pasul A (căutare) făcut 7 nov; Pașii B și C (descărcare + inspecție) de rulat de utilizator.

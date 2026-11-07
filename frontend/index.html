@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Oswald:wght@500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="css/styles.css?v=7">
+  <link rel="stylesheet" href="css/styles.css?v=8">
 </head>
 <body>
   <!-- Decorative animated starfield behind everything (pure CSS, aria-hidden) -->
@@ -23,7 +23,7 @@
     <div class="hero-top">
       <a class="hero-logo" href="#top"><span class="brand-logo" aria-hidden="true"></span><span>SPHEREx Blink</span></a>
       <nav class="hero-nav" aria-label="Page sections"><a href="#workspace">Workspace</a><a href="#about">About</a><a href="#telescope">Telescope</a></nav>
-      <span class="badge" id="data-source-badge" title="Which data source is active">Mock data</span>
+      <span class="badge" id="data-source-badge" title="Which data source is active">Synthetic demo data</span>
     </div>
     <div class="hero-title">
       <p class="hero-eyebrow">NASA Space Apps 2026 &middot; Planet X and SPHEREx</p>
@@ -91,7 +91,8 @@
       <details class="hint" open>
         <summary>How to spot a moving object</summary>
         <ol>
-          <li>Press <kbd>Play</kbd> &mdash; images from different dates flash one after another.</li>
+          <li>Quick way: press <strong>Find movers</strong> under the player &mdash; it lists the dots that changed position.</li>
+          <li>Or by eye: press <kbd>Play</kbd> &mdash; images from different dates flash one after another.</li>
           <li>Most stars stay put. Look for a dot that <strong>jumps</strong> or <strong>drifts</strong>.</li>
           <li>A dot that only gets <strong>brighter/fainter</strong> in place is probably a variable star.</li>
           <li>Slow down the speed or step frame by frame with <kbd>←</kbd> <kbd>→</kbd>.</li>
@@ -163,6 +164,19 @@
       </div>
       <!-- Filled when a test object is in the field: how far it should move, in pixels -->
       <p class="track-info" id="track-info" aria-live="polite"></p>
+
+      <!-- Find movers: lists dots that change position between dates (js/features/movers.js) -->
+      <div class="movers" id="movers">
+        <div class="movers-head">
+          <button type="button" class="btn btn-primary btn-small" id="find-movers-btn" disabled>Find movers</button>
+          <p class="movers-status" id="movers-status" role="status" aria-live="polite">Compares the dots in all images and lists the ones that moved.</p>
+        </div>
+        <ol class="mover-list" id="mover-list" aria-label="Candidate movers" hidden></ol>
+        <div class="mover-detail" id="mover-detail" hidden>
+          <p id="mover-detail-text"></p>
+          <button type="button" class="btn btn-small" id="mover-map-btn">Check in sky map</button>
+        </div>
+      </div>
 
       <div class="tools" role="group" aria-label="Save and share">
         <button type="button" class="btn btn-small" id="save-png-btn" disabled>Save image</button>

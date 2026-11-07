@@ -16,6 +16,7 @@ import { BlinkPlayer, MODES, loadImage, meanImageData } from "./player.js";
 import { canvasToSky, measureAndPlot, clearMeasurement, APERTURE_RADIUS_PX } from "./features/measure.js";
 import { SkyContext } from "./features/skyContext.js";
 import { setupFullscreen } from "./features/fullscreen.js";
+import { findMoversInImages, describeMover, matchKnownObject, moverPositionAtMjd, passIndices } from "./features/movers.js";
 import { savePng, recordBlink, canRecord, copyLink } from "./features/exporters.js";
 
 // Small helper: document.getElementById is long, so we alias it.
@@ -284,6 +285,7 @@ function setPlayerEnabled(enabled) {
   document.querySelectorAll('#mode-switch input:not([value="blink"])')
     .forEach((r) => { r.disabled = !enabled || player.length < 2; });
   $("show-flags").disabled = !enabled || !player.hasFlagMasks;
+  $("find-movers-btn").disabled = !enabled || !canFindMovers();
 }
 
 playBtn.addEventListener("click", () => player.toggle());
@@ -402,6 +404,7 @@ async function showDetector(detector) {
   const { frames, skipped } = framesFor(detector);
   currentFrames = frames;
   player.setTracks([]);                  // old track has the wrong number of points
+  clearMovers();                         // so do the movers found in the old frames
   player.pause();
   setPlayerEnabled(false);
   markOverview(detector);
@@ -425,6 +428,7 @@ async function showDetector(detector) {
   updateTracks();
   // Re-apply the mode: it may need ≥ 2 frames, and the info line depends on it.
   setMode(player.mode, { updateUrl: false });
+  $("movers-status").textContent = moversHint();
 
   if (currentFrames.length === 1) {
     setStatus(`Only one ${detector} image here – nothing to blink. Try another detector.`);
@@ -514,16 +518,146 @@ function clearMarker() {
 // ---------------------------------------------------------------
 const sky = new SkyContext($("aladin-box"), $("aladin-status"));
 setupFullscreen($("sky-frame"), $("sky-full-btn"));   // map + its controls fill the screen
-$("aladin-btn").addEventListener("click", async () => {
-  const q = currentQuery || readForm();
-  if (!q) { $("aladin-status").textContent = "Enter coordinates first."; return; }
+/** Open (or re-centre) the sky map on a position { ra, dec, fov }. */
+async function openSkyMap(q) {
   $("aladin-btn").disabled = true;
   await sky.open(q, $("survey-select").value);
   $("aladin-btn").disabled = false;
   $("aladin-btn").textContent = "Re-centre sky map";
   $("sky-full-btn").hidden = !sky.isOpen;             // nothing to enlarge until the map is open
+}
+$("aladin-btn").addEventListener("click", async () => {
+  const q = currentQuery || readForm();
+  if (!q) { $("aladin-status").textContent = "Enter coordinates first."; return; }
+  await openSkyMap(q);
 });
 $("survey-select").addEventListener("change", (e) => sky.setSurvey(e.target.value));
+
+// ---------------------------------------------------------------
+// Find movers: which dots changed position between the dates? (features/movers.js)
+// ---------------------------------------------------------------
+const MOVERS_HINT = "Compares the dots in all images and lists the ones that moved.";
+const MIN_PASSES = 3;                      // same rule as in movers.js: a third pass proves a line
+let movers = [];                           // candidates for the detector on screen, best first
+let selectedMover = -1;
+
+const countPasses = (frames) => (frames.length ? passIndices(frames.map((f) => f.mjd)).at(-1) + 1 : 0);
+const canFindMovers = () => player.length >= 3 && countPasses(player.frames) >= MIN_PASSES;
+
+/** What the status line says before a search: the hint, or why the search is not possible. */
+function moversHint() {
+  const n = player.length, det = currentDetector;
+  if (n < 3) return `Needs at least 3 images of one detector (${det} has ${n}).`;
+  const passes = countPasses(player.frames);
+  if (passes < MIN_PASSES) {
+    return `Needs images from at least ${MIN_PASSES} survey passes, about 6 months apart (${det} has ${passes}). Try another detector.`;
+  }
+  return MOVERS_HINT;
+}
+
+function clearMovers() {
+  movers = [];
+  selectedMover = -1;
+  player.setCandidates([]);
+  $("mover-list").hidden = true;
+  $("mover-list").replaceChildren();
+  $("mover-detail").hidden = true;
+  $("movers-status").textContent = MOVERS_HINT;
+}
+
+$("find-movers-btn").addEventListener("click", async () => {
+  if (!player.length || !currentQuery) return;
+  const token = loadToken;
+  const status = $("movers-status");
+  $("find-movers-btn").disabled = true;
+  clearMovers();
+  status.textContent = `Searching… comparing the dots in ${player.length} images.`;
+  await new Promise((resolve) => setTimeout(resolve, 30));      // let the browser show that message first
+  if (token !== loadToken) return;                               // new data arrived meanwhile
+  try {
+    const greys = player.greyFrames();
+    if (!greys) {
+      status.textContent = "Cannot read the image pixels in this browser (images from another site), so the search cannot run.";
+      return;
+    }
+    const result = findMoversInImages(player.frames.map((f, i) => ({ mjd: f.mjd, grey: greys[i] })), player.naturalSize);
+    showMovers(result);
+  } catch (err) {
+    console.error(err);
+    status.textContent = `The search failed: ${err.message}`;
+  } finally {
+    $("find-movers-btn").disabled = !canFindMovers();
+  }
+});
+
+function showMovers({ candidates, stats, reason }) {
+  const status = $("movers-status"), list = $("mover-list");
+  if (reason) { status.textContent = `Cannot search: ${reason}.`; return; }
+
+  const n = player.naturalSize;
+  const geo = { ra: currentQuery.ra, dec: currentQuery.dec, n,
+    scaleArcsec: currentFrames[0].pixelScaleArcsec ?? (currentQuery.fov * 60) / n };
+  movers = candidates.map((c, k) => ({
+    ...c, ...describeMover(c, geo),
+    label: `#${k + 1}`,
+    known: matchKnownObject(c, geo, TARGETS)?.target.label ?? null,
+    // where it is on each frame's date, as image fractions (what the player draws)
+    points: player.frames.map((f) => { const p = moverPositionAtMjd(c, f.mjd); return { fx: p.x / n, fy: p.y / n }; }),
+  }));
+
+  const dots = Math.round(stats.dotsPerFrame.reduce((a, b) => a + b, 0) / stats.frames);
+  const summary = `Compared ${stats.frames} images (about ${dots} dots each; ${stats.stillDots} stayed put).`;
+  if (!movers.length) {
+    const other = detSelect.options.length > 1 ? " Try another detector: a dot can be too faint in one wavelength band." : "";
+    status.textContent = `No movers found. ${summary} Nothing shifted by more than about 1 pixel (${geo.scaleArcsec.toFixed(0)}″).${other}`;
+    return;
+  }
+  status.textContent = `${movers.length} candidate${movers.length === 1 ? "" : "s"} found, best first. ${summary} Click one to see its path.`;
+
+  list.replaceChildren(...movers.map((m, k) => {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "mover-item";
+    btn.setAttribute("aria-pressed", "false");
+    btn.dataset.index = String(k);
+    const rank = Object.assign(document.createElement("span"), { className: "mover-rank", textContent: m.label });
+    const main = Object.assign(document.createElement("span"), { className: "mover-main",
+      textContent: `${m.speedArcsecPerYear.toFixed(1)}″/yr toward ${m.compass}${m.known ? ` · ${m.known} (known)` : ""}` });
+    const sub = Object.assign(document.createElement("span"), { className: "mover-sub",
+      textContent: `RA ${formatRA(m.ra)}  Dec ${formatDec(m.dec)} · seen in ${m.nDet} of ${m.nFrames} images · ${Math.round(m.significance)}σ` });
+    btn.append(rank, main, sub);
+    btn.addEventListener("click", () => selectMover(selectedMover === k ? -1 : k));
+    li.append(btn);
+    return li;
+  }));
+  list.hidden = false;
+  player.setCandidates(movers, -1);
+}
+
+/** Highlight one candidate on the image (ring + path) and describe it; -1 = none. */
+function selectMover(k) {
+  selectedMover = k;
+  document.querySelectorAll("#mover-list .mover-item").forEach((b) =>
+    b.setAttribute("aria-pressed", String(Number(b.dataset.index) === k)));
+  player.setCandidates(movers, k);
+  const detail = $("mover-detail");
+  detail.hidden = k < 0;
+  if (k < 0) return;
+  const m = movers[k];
+  $("mover-detail-text").textContent =
+    `${m.label}: ${m.speedArcsecPerYear.toFixed(1)}″/yr (${m.speedPx.toFixed(2)} px/yr) toward ${m.compass}, ` +
+    `position angle ${m.positionAngleDeg.toFixed(0)}°. Middle of the observations: RA ${formatRA(m.ra)}, Dec ${formatDec(m.dec)}. ` +
+    (m.known ? `This is ${m.known}, one of the known test objects: the search found it on its own. `
+             : "Not one of the five test objects. Catalogues list year-2000 positions, so a fast mover can sit a little away from where it is catalogued. ");
+}
+
+$("mover-map-btn").addEventListener("click", async () => {
+  const m = movers[selectedMover];
+  if (!m || !currentQuery) return;
+  await openSkyMap({ ra: m.ra, dec: m.dec, fov: currentQuery.fov });
+  $("sky-frame").scrollIntoView({ block: "center", behavior: prefersReducedMotion ? "auto" : "smooth" });
+});
 
 // ---------------------------------------------------------------
 // Save / record / share
@@ -573,6 +707,7 @@ async function loadData(query) {
   setPlayerEnabled(false);
   clearMarker();
   player.setTracks([]);
+  clearMovers();
   $("track-info").textContent = "";
   $("overview").hidden = true;
   showOverlay("Loading images…", `RA ${formatRA(query.ra)}  Dec ${formatDec(query.dec)}  ·  ${query.fov}′ field`);
@@ -655,7 +790,9 @@ function applyUrlState() {
 
 // Show which data source is active in the header badge.
 const badge = $("data-source-badge");
-badge.textContent = DATA_SOURCE === "api" ? "Live data" : "Mock data";
+badge.textContent = DATA_SOURCE === "api" ? "Live data" : "Synthetic demo data";
+badge.title = DATA_SOURCE === "api" ? "Images come from the backend"
+  : "The images are generated in your browser for testing. They are not SPHEREx observations.";
 badge.classList.toggle("real", DATA_SOURCE === "api");
 
 if (!canRecord()) $("record-btn").title = "Your browser cannot record canvas video.";

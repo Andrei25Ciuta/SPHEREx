@@ -120,6 +120,26 @@ Cum am verificat: am citit paginile de mai jos prin instrumentul de web al sesiu
 9. **Câmpuri adânci** lângă polii eclipticii oferă **mai multe epoci**: bune pentru demo și pentru Find movers (de verificat dacă vreunul din cele 5 obiecte e acolo).
 10. **Cum aflăm pozițiile obiectelor în fișiere:** TAP cu `CONTAINS(POINT(...), p.poly)`; testul simplu: un obiect test (WISE 0855) ⇒ câte imagini, în ce detectoare, ce date.
 
+## 8b. Verificat pe o rulare reală (7 nov 2026, doar căutare, 0 fișiere descărcate)
+
+Rulat cu `backend/scripts/fetch_real_sample.py` (vezi `REAL_DATA_TEST.md`), de pe rețeaua proiectului:
+
+- **Endpoint TAP:** `https://irsa.ipac.caltech.edu/TAP/sync?REQUEST=doQuery&LANG=ADQL&FORMAT=csv&QUERY=...` răspunde cu CSV, în **3–15 s** per interogare (sursă: documentația TAP IRSA + tutorialul spherex-cutouts).
+- **Interogarea din tutorial funcționează neschimbată** (tabelele `spherex.artifact` ⨝ `spherex.plane`, `CONTAINS(POINT('ICRS', ra, dec), p.poly)`, `ORDER BY p.time_bounds_lower`); coloanele folosite: `a.uri`, `p.planeid`, `p.time_bounds_lower` (MJD, confirmat: valori ca 60800.x), `p.energy_bandpassname` (`SPHEREx-D1` … `SPHEREx-D6`).
+- **Forma `uri`:** cale relativă, fără `/` la început, ex. `ibe/data/spherex/qr2/level2/2025W33_2C/l2b-v20-2025-266/6/level2_2025W33_2C_0321_1D6_spx_l2b-v20-2025-266.fits`; prefixul `https://irsa.ipac.caltech.edu/` se adaugă. Numele fișierului conține detectorul (`1D6` = detectorul 6).
+- **Datele există până în oct. 2026** (cele mai noi imagini văzute: 2026-10-02) și pentru toate cele 5 obiecte test:
+
+| Obiect | Imagini | Treceri (grupuri la > 30 zile) pe detector |
+|---|---|---|
+| Barnard's Star | 359 | D1–D6: 3 |
+| Epsilon Indi B | 445 | D1, D4: 3; D3, D6: 4; D2, D5: 5 |
+| WISE 0855 | 256 | D1, D3, D4, D6: 3; D2, D5: 4 |
+| RW Aurigae | 333 | D1–D6: 3 |
+| R Draconis (câmp adânc) | 2483 | D1, D2, D4, D5: 3; D3, D6: 2 |
+
+- Un detector are deci **~35–95 de imagini** în jurul unui obiect obișnuit (nu 6), iar în câmpul adânc sute (R Dra: 565–584 pe detector).
+- **Încă nedescărcat și neverificat:** orice despre conținutul fișierelor (mărime, cuvinte-cheie, WCS, WCS-WAVE, flag-uri). Asta face Pasul B din `REAL_DATA_TEST.md`.
+
 ## 9. Încă neclar / de verificat
 
 - Cuvântul-cheie exact pentru **timpul observației** în header (`DATE` = observație sau creare?).

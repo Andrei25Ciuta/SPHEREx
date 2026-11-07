@@ -215,7 +215,7 @@ export function makeSchedule(rng) {
  * of every frame. Cached, so measuring a source does not re-render the sky.
  */
 const runCache = new Map();
-function observe(ra, dec, fovArcmin) {
+export function observe(ra, dec, fovArcmin) {       // exported for scratch/test_movers.mjs
   const key = `${ra.toFixed(3)},${dec.toFixed(3)},${fovArcmin}`;
   if (runCache.has(key)) return runCache.get(key);
 
