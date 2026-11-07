@@ -24,6 +24,8 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from spherex import cache, hips_proxy
+from spherex.flags import bad_mask
+from spherex.infrared_sources import detect_sources
 from spherex.cutout import cutout, flag_summary, target_wcs
 from spherex.floatdata import float_cutout_bytes, mask_cutout_bytes
 from spherex.photometry import measure
@@ -94,6 +96,51 @@ def photometry(
     frames = archive.find(ra, dec, det)
     motion = None if epoch_mjd is None else {"epoch_mjd": epoch_mjd, "pm_east": pm_east, "pm_north": pm_north}
     return {"points": measure(frames, ra, dec, radius, motion)}
+
+
+
+@app.get("/api/infrared/sources")
+def infrared_sources(
+    ra: float = Query(..., ge=0, lt=360),
+    dec: float = Query(..., ge=-90, le=90),
+    fov: float = Query(5, ge=FOV_MIN, le=FOV_MAX),
+    det: str = Query("all"),
+    threshold_sigma: float = Query(5.0, ge=3, le=30),
+    max_frames: int = Query(6, ge=1, le=24),
+):
+    """Find spatial infrared peaks in local real-data cutouts, not motion.
+
+    Results are per exposure: a peak in multiple frames is not deduplicated.
+    No catalog crossmatch, wavelength classification or discovery claim.
+    """
+    frames = archive.find(ra, dec, det)
+    if not frames:
+        return {"frames": [], "message": "No local FITS exposures cover this position"}
+    frames = sorted(frames, key=lambda f: f.mjd)[:max_frames]
+    scale = float(np.median([f.pixel_scale_arcsec for f in frames]))
+    tgt, npix = target_wcs(ra, dec, fov, scale)
+    results = []
+    for frame in frames:
+        img, flags = cutout(frame, tgt, npix)
+        if np.isfinite(img).mean() < MIN_VALID_FRACTION:
+            continue
+        mask = bad_mask(flags) if flags is not None else None
+        detection = detect_sources(img, mask, threshold_sigma=threshold_sigma)
+        for source in detection["sources"]:
+            sky_ra, sky_dec = tgt.all_pix2world(source["x"], source["y"], 0)
+            source["ra"] = round(float(sky_ra) % 360, 7)
+            source["dec"] = round(float(sky_dec), 7)
+        results.append({
+            "dateISO": frame.date_iso,
+            "detector": frame.detector,
+            "wavelengthRangeUm": [frame.wave_min_um, frame.wave_max_um],
+            **detection,
+        })
+    return {
+        "frames": results,
+        "warning": "Candidate peaks only. Per-frame detections are not crossmatched, "
+                   "deduplicated, calibrated photometry or confirmed discoveries.",
+    }
 
 
 def _build(frames, ra, dec, fov, scale, key):
