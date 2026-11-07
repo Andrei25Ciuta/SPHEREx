@@ -42,7 +42,7 @@ respected (no auto-play), colour-blind-checked chart palette, table view of all 
 ### How "Find movers" works (and what it cannot do)
 
 1. **Detect** dots in each image of the chosen detector (peaks above 5 σ, centred to sub-pixel accuracy).
-2. **Link**: two dots from two *different survey passes* define a straight line (position = start + velocity × time). A line counts only if dots from **at least 3 passes** lie on it (two points always make a line; a third pass is the proof). Still stars are found first (zero velocity); movers are lines whose velocity is significantly different from zero (≥ 6 σ and at least ~1 pixel of total motion).
+2. **Link**: two dots from two *different survey passes* define a straight line (position = start + velocity × time). A line counts only if dots from **at least 3 passes** and from at least 60 % of the images lie on it (two points always make a line; a third pass is the proof). Still stars are found first (zero velocity); movers are lines whose velocity is significantly different from zero (≥ 6 σ and at least ~1 pixel of total motion).
 3. **Report** the movers, best first. Checked by `scratch/test_movers.mjs`: on the mock sky it finds the planted mover in 35 of 39 fields with no false candidates, and re-discovers Barnard's Star and WISE 0855 on their real catalogue speeds.
 
 With **real data** it works on the real float pixel values the backend serves (`dataUrl`), not on the 8-bit pictures, and first registers the images on the field stars (every exposure has its own pointing error, up to ~0.7 px between passes). With synthetic data it uses the 8-bit pictures of the player.
@@ -51,7 +51,7 @@ Limits, on purpose for v1: it uses **positions only** (through SPHEREx's variabl
 
 ### Validation on real data
 
-Run blind on real SPHEREx cutouts (not in this repository), **Find movers** recovered Barnard's Star and Epsilon Indi B with **0 false candidates**; the measured motion is within 0.55 ″/yr (Barnard, detector D6) and 0.61 ″/yr (Epsilon Indi B) of the catalogue, and 3.7 ″/yr off for Barnard in detector D2, where its core is strongly saturated (the cause is not yet known). **Planet X mode and the colour hint have not been confirmed on real images**, and no real asteroid has been detected yet. Everything measured, how to re-run it and every limit: **[docs/VALIDATION.md](docs/VALIDATION.md)**. Material for presenting it: [docs/PITCH.md](docs/PITCH.md).
+Run blind on real SPHEREx cutouts (not in this repository), **Find movers** recovered Barnard's Star and Epsilon Indi B in all 4 runs; the measured motion is within 0.54-0.61 ″/yr of the catalogue in three of them and 3.7 ″/yr off for Barnard in detector D2, where its core is strongly saturated (the cause is not yet known). One run first gave **3 false candidates**, which led to a stricter rule (a line must be seen in 60 % of the images, not half), so that run is no longer an independent test. The asteroid check found a real asteroid (Arosa, V 14.6) in a real image, 1.0″ from where SkyBoT predicts it: a single image, so it does not yet prove motion. The colour hint gave "neutral" for the real brown-dwarf pair Epsilon Indi B and **cannot separate an M dwarf from an early T dwarf**. **Planet X mode has not been run on real images.** Everything measured, how to re-run it and every limit: **[docs/VALIDATION.md](docs/VALIDATION.md)**. Material for presenting it: [docs/PITCH.md](docs/PITCH.md).
 
 ## Run – frontend only (mock data, no install)
 
@@ -157,7 +157,7 @@ backend/.venv/Scripts/python.exe -m pip install -r backend/requirements-dev.txt
 backend/.venv/Scripts/python.exe -m pytest backend
 ```
 
-111 tests cover `cutout` (north up / east left, rotated frames, edges, flags, bilinear resampling), `photometry` (including a moving object), `query` (headers, bad files, distortion that cannot be inverted), `stretch` and the `hips_proxy` allowlist. The HTTP layer in `backend/app.py` is not covered yet. The browser-side modules have 231 checks in the Node tests above.
+111 tests cover `cutout` (north up / east left, rotated frames, edges, flags, bilinear resampling), `photometry` (including a moving object), `query` (headers, bad files, distortion that cannot be inverted), `stretch` and the `hips_proxy` allowlist. The HTTP layer in `backend/app.py` is not covered yet. The browser-side modules have 238 checks in the Node tests above.
 
 `scratch/check_track.js` is a browser-console helper that measures, frame by frame, how far
 WISE 0855 is from its predicted position (use it again on real data).

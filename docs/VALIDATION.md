@@ -5,10 +5,12 @@ shown. The real images are **not** in this repository (not published: the licenc
 not been checked, see [CREDITS.md](../CREDITS.md)); they live in `backend/data/real/`, which git ignores.
 
 **One line:** with no hint about the target, *Find movers* recovered both fast-moving objects it was pointed at
-(Barnard's Star and Epsilon Indi B) on real SPHEREx pixels, with **zero false candidates**; in two of the three runs
-the measured motion is within 0.6 ″/yr of the catalogue. For Barnard in detector D2, where its core is strongly
-saturated, it is 3.7 ″/yr off, and we do not yet know why. The Planet X (parallax) mode and the asteroid overlay have **not** been confirmed on real
-images; what exists for them is stated in sections 5 and 6.
+(Barnard's Star and Epsilon Indi B) in all **4 of 4** runs on real SPHEREx pixels; in three of the four the measured
+motion is within 0.6 ″/yr of the catalogue, for Barnard in detector D2 (strongly saturated core) it is 3.7 ″/yr off and
+we do not yet know why. **One run first produced 3 false candidates**; the rule was tightened afterwards (section 2),
+so that run is no longer an independent test. The known-asteroid check has one **positive** real detection (section 6,
+a single image). The colour hint was tried on a real brown dwarf and gave "neutral", not a classification (section 3).
+The Planet X (parallax) mode has **not** been run on real images (section 5).
 
 ## 1. The data
 
@@ -17,10 +19,12 @@ images; what exists for them is stated in sections 5 and 6.
 | Barnard's Star (RA 269.4462, Dec +4.769) | D2 (1.1-1.6 µm) | 15 | 4 | 2025-08-21 to 2026-09-22 | 5′, 49 × 49 px of 6.14″ |
 | Barnard's Star | D6 (4.2-5.1 µm) | 6 | 3 | 2025-08-15 to 2026-08-20 | same |
 | Epsilon Indi B (RA 331.0965, Dec −56.8006) | D2 | 11 | 5 | 2025-04-26 to 2026-10-02 | same |
+| Epsilon Indi B | D6 | 6 | 4 | 2025-04-29 to 2026-09-28 | same |
+| (RA 296.40882, Dec −24.04831) | D2 | 1 | 1 | 2026-04-20 | same; centred on the asteroid Arosa (section 6) |
 
 Cutouts come from IRSA's server-side cutout service (`backend/scripts/fetch_real_sample.py`, which asks before
 downloading unless told `--yes`). The backend serves each cutout both as a picture and as **real float32 pixel values** (`dataUrl`), so the
-detector works on the calibrated numbers, not on an 8-bit picture. Total on disk: 145 MB.
+detector works on the calibrated numbers, not on an 8-bit picture. Total on disk: 39 files, 177 MB.
 
 ## 2. Blind test of *Find movers*
 
@@ -34,10 +38,18 @@ arcsec/yr: RA × cos Dec, Dec).
 | Barnard, D6 | 1 | Barnard's Star | (−0.80, +10.36) | (−0.25, +10.43) | **0.55 ″/yr** | 6 of 6 | 11 σ |
 | Barnard, D2 | 1 | Barnard's Star | (−0.80, +10.36) | (−4.42, +11.21) | **3.72 ″/yr** | 15 of 15 | 13 σ |
 | Epsilon Indi B, D2 | 1 | Epsilon Indi B | (+3.98, −2.47) | (+3.45, −2.15) | **0.61 ″/yr** | 11 of 11 | 8 σ |
+| Epsilon Indi B, D6 | 1 (after the rule change below) | Epsilon Indi B | (+3.98, −2.47) | (+3.53, −2.76) | **0.54 ″/yr** | 6 of 6 | 7 σ |
 
-- **Recovered 3 of 3** catalogued fast movers (every field has exactly one); **0 candidates without a catalogue match**.
-- 0.55-0.61 ″/yr is about 0.1 pixel per year, below the 0.15 px the detector assumes as the best precision of one
+- **Recovered 4 of 4** runs (every field has exactly one catalogued fast mover); **0 candidates without a catalogue match** with the final rule.
+- 0.54-0.61 ″/yr is about 0.1 pixel per year, below the 0.15 px the detector assumes as the best precision of one
   centroid.
+- **A failure, and the change it caused.** The first run on Epsilon Indi B in D6 (6 images, about 9 dots each) listed
+  Epsilon Indi B **and 3 false candidates**: lines of 60-85 ″/yr through dots of only 3 of the 6 images. With so few
+  images and so many dots, three chance matches are likely. The rule "a line needs dots in at least half of the
+  images" became "at least 60 %" (4 of 6; `minDetectionFraction` in `movers.js`). The other three real runs and the
+  synthetic checks in `scratch/test_movers.mjs` are unchanged (mock sky: 35 of 39 planted movers found, 0 false), and
+  a new check covers the 3-of-6 case. **Because the rule was changed after seeing this failure, this D6 run is no
+  longer an independent test of it**; a new field would be needed for that.
 - Two changes were made because of what the real images showed: **float pixels** (an 8-bit picture turns a bright star
   into a flat-topped blob whose centre jumps) and **image registration** (every exposure has its own pointing
   error, up to about 0.7 px between passes, which over a one-year baseline looks like a motion of several
@@ -63,14 +75,19 @@ flux against wavelength.
   (section 2), so they are **lower limits**, and the colour hint declines to judge ("21 measurements have flagged
   pixels ... and were left out"). From memory (not checked here), the star is of order 10 Jy in the near infrared
   and a few Jy near 4.6 µm: the same order, which is all we claim.
-- **Epsilon Indi B** (D2 only, 11 images): 14-19 mJy at 1.1-1.2 µm and 31-41 mJy from 1.25 µm up to 1.6 µm (one
-  flagged image at 1.35 µm gives 5.5 mJy), signal-to-noise 130-790 per image. Its 4-5 µm side was **not**
-  downloaded, so no colour class can be given for it. A rise from 1.1 to 1.3 µm is what is expected of a brown dwarf
-  (from memory, not checked).
+- **Epsilon Indi B** (D2 + D6, 17 images): 14-19 mJy at 1.1-1.2 µm and 31-41 mJy from 1.25 µm up to 1.6 µm (one
+  flagged image at 1.35 µm gives 5.5 mJy), signal-to-noise 130-790 per image in D2; **21-24 mJy at 4.4-4.9 µm**, S/N
+  about 150-230 per image in D6 (the four unflagged points: 23.8, 21.0, 21.4 and 23.3 mJy). A rise from 1.1 to 1.3 µm
+  is what is expected of a brown dwarf (from memory, not checked).
 - **Colour hint** (`frontend/js/features/spectrum.js`): the ratio of the median flux at 4-5 µm to the median at 1-2 µm
   (star-like < 0.3, neutral 0.3-1.5, red 1.5-10, very red > 10). The thresholds are textbook orders of magnitude on
-  **uncalibrated aperture sums**; it is a hint to look closer, not a classification. Tested on synthetic spectra
-  (`scratch/test_spectrum.mjs`) and on the synthetic mover; **no real object has been classified with it yet**.
+  **uncalibrated aperture sums**; it is a hint to look closer, not a classification.
+  **First test on a real object (Epsilon Indi B, 7 points at 1-2 µm and 4 at 4-5 µm): ratio 0.65, "neutral", not
+  "red".** This is an unresolved pair of a T1 and a T6 brown dwarf; "very red" is meant for the coldest objects
+  (WISE 0855), not for T dwarfs. For Barnard's Star the flagged lower limits give about 0.48 (the app declines to
+  judge them). **So the hint does not separate a cool M dwarf from an early T dwarf**, and the text of the "neutral"
+  class now says so. It is kept as a "look closer" prompt, not as a classification. The two real objects are
+  recorded as a regression in `scratch/test_spectrum.mjs`.
 
 ## 4. Float pixels and finer resampling (backend)
 
@@ -137,18 +154,36 @@ What it **cannot** claim:
   exposure. For 2015 HV228 the flux at its predicted position is zero within the noise on its own date (S/N −1.0 and
   −0.3) and on the other dates (median −1.0 and −0.1); for 2005 LF3 the measurement on its own date could not be
   made (median −1.1 on the other four dates). That is a consistent **negative control**, not a detection.
-  **A positive test (a bright asteroid seen where predicted) has not been done**; it needs one more cutout from a
-  field with a bright asteroid.
-- The position is geocentric; SPHEREx's own height shifts a main-belt asteroid by up to ~8″ (about one pixel).
+- **Positive test, one image** (`scratch/find_asteroid_frame.py` found the target, `scratch/fetch_asteroid_cutout.py`
+  downloaded one 5.1 MB cutout): the asteroid **Arosa** (main belt, V = 14.6) lies in the D2 image
+  `level2_2026W17_1B_0163_1D2` (2026-04-20, MJD 61150.82142, 1.32-1.35 µm), 0.70° from the image centre. SkyBoT puts it
+  at RA 296.40882, Dec −24.04831 (position uncertainty 0.02″).
+  - **A source of 107 σ** (peak 3.58 MJy/sr over a background noise of 0.033) sits in the central pixel; its centroid
+    is **0.17 px = 1.0″ from the predicted position**. Aperture flux 8.55 mJy at 1.34 µm, no bad-flag pixel in the
+    central 5 × 5. The app's own chain (SkyBoT, projection, backend photometry) gives S/N 8.7 in its 2-pixel
+    aperture, and the overlay draws "Arosa · V 14.5" on the dot. The other two bodies SkyBoT lists in the field
+    (V = 18.9 and 22.8) have no source at their positions (the faintest measures −0.2σ).
+  - It is **not unique by brightness**: it is the 4th-brightest source of the cutout (the others: 1994 σ, 112 σ,
+    110 σ), and six other peaks are at least half as bright. What argues it is not a star: **2MASS** (queried through
+    IRSA's TAP, 43 sources with J < 16 in the field) has **no source within 10″** of the position, while 8.55 mJy at
+    1.34 µm corresponds to J ≈ 13.4 (zero point 1594 Jy, from memory), well within 2MASS's reach; and the flux
+    matches V = 14.6 with the ordinary V − J ≈ 1.2 of sunlit rock (from memory, not checked). SIMBAD is almost empty
+    here (1 object in the whole field) and cannot be used as a star list.
+  - **What it does not prove:** one image cannot show that the source moves. The same asteroid is 0.8 days earlier in
+    another D2 image, at RA 296.246, Dec −24.000; a second cutout (about 5 MB) would show it **absent** from that spot
+    on the other date. Not downloaded.
+- The position is geocentric; SPHEREx's own height shifts a main-belt asteroid by up to ~8″ (about one pixel); the
+  measured offset is 1.0″.
 
 ## 7. Known limits, in one list
 
-1. Three real fields and two objects: not a statistical survey.
+1. Four real runs on two fast-moving objects and one asteroid: not a statistical survey.
 2. Saturated stars: position and flux unreliable (section 2); the flags are not yet used as a mask.
 3. Motion below about 1 pixel (6″) over the whole period looks like a still star (Epsilon Indi B moves 4.7″/yr and is
    found only because the baseline is 1.4 years).
 4. Needs one detector with images from at least 3 survey passes about 6 months apart.
 5. Positions only, never brightness: through the variable filter the same star has a different brightness in each image.
-6. Colour hint and Planet X mode: see sections 3 and 5.
+6. Colour hint (cannot separate an M dwarf from an early T dwarf) and Planet X mode (synthetic only): see sections 3 and 5.
+   The asteroid detection (section 6) is one image, without proof of motion.
 7. Calibration: fluxes are quick aperture sums, not SPHEREx's own calibrated photometry.
 8. Not checked: the licence of the real data and of Aladin Lite (GPL-3, loaded from a CDN) for a public release.

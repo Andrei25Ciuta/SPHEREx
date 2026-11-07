@@ -150,7 +150,7 @@ Rulat cu `backend/scripts/fetch_real_sample.py` (vezi `REAL_DATA_TEST.md`), de p
 - **Mișcarea (validare cap-coadă):** din cele 4 imagini, mișcarea proprie a lui Barnard's Star măsurată cu centroid e **−1,9 / +11,2 ″/an** (RA·cos δ / Dec), față de **−0,8 / +10,4** în catalog; steaua stă la 1,6–3,6″ (0,26–0,58 px) de poziția din catalog în toate cele 4 epoci, fără decalaj sistematic. Timpul, WCS-ul și orientarea (nu e oglindită) sunt corecte.
 - **Find movers pe aceste date** (4 imagini, prin backend): găsește Barnard's Star și îl etichetează „(known)", dar viteza iese 18,7″/an (catalog 10,4): cu 4 imagini, 1 px de zgomot de poziție (resamplare nearest-neighbour + PNG pe 8 biți) și doar ~1 an de bază, panta e slab determinată. Identificarea e corectă, valoarea numerică nu e încă bună.
 
-## 8d. Verificat pe 32 de fișiere REALE (7 nov 2026: Barnard D2 + D6, Epsilon Indi B D2) – vezi [VALIDATION.md](VALIDATION.md)
+## 8d. Verificat pe 39 de fișiere REALE (7 nov 2026: Barnard D2 + D6, Epsilon Indi B D2 + D6, un cutout cu asteroidul Arosa) – vezi [VALIDATION.md](VALIDATION.md)
 
 - **Unități:** `BUNIT = MJy/sr`. Conversia în Jansky: flux (MJy/sr · pixeli) × 10⁶ × (pixel în rad)² (aplicată în `backend/spherex/photometry.py`).
 - **Stele foarte strălucitoare:** Barnard's Star are vârf de 580–1980 MJy/sr, iar în nucleul de 5×5 pixeli sunt setați biții **0** (tranzient), **1** (overflow) și **2** (eroare SUR) în 24–84 % din pixeli (D6 și D2). Deci aperturile și pozițiile lui sunt nesigure (fluxul e o limită inferioară). Biții 0, 1, 2 sunt în lista „răi" din `flags.py`, deci cele 21 de măsurători sunt marcate `flagged`.

@@ -7,6 +7,10 @@
 //   cold brown dwarf   very little light at 1-2 um, much more at 4-5 um: > 10 (WISE 0855 is the extreme)
 // The thresholds are textbook orders of magnitude, applied to UNCALIBRATED aperture sums: a hint to
 // look closer, not a classification. Pure functions, so they also run in Node tests.
+// First test on a REAL object (7 Nov 2026, docs/VALIDATION.md §3): Epsilon Indi B (an unresolved T1 + T6 brown
+// dwarf pair, D2 + D6, 7 usable points at 1-2 um and 4 at 4-5 um) gives 0.65, i.e. "neutral", NOT "red"; the "very red"
+// class is for the coldest objects (WISE 0855). Barnard's Star (M dwarf) gives about 0.48 on flagged lower limits, so the
+// hint cannot yet tell an M dwarf from an early T dwarf.
 
 export const BANDS = { short: [0.7, 2.0], long: [3.5, 5.1] };       // micrometres
 const MIN_POINTS = 2;                                               // measurements needed in EACH band
@@ -52,6 +56,6 @@ export function colourHint(points) {
   const head = `Colour hint: flux at 4–5 µm divided by flux at 1–2 µm = ${shown}. `;
   if (ratio >= 10) return { ...base, kind: "very-red", ratio, text: head + "Very red: far brighter at long wavelengths than at short ones. Ordinary stars are never like this; cold brown dwarfs are." };
   if (ratio >= 1.5) return { ...base, kind: "red", ratio, text: head + "Red: brighter at long wavelengths. A warm asteroid (heat glow) or a cool brown dwarf would look like this." };
-  if (ratio >= 0.3) return { ...base, kind: "neutral", ratio, text: head + "Neutral: flatter than an ordinary star. Reflected sunlight, or a star with an infrared excess." };
+  if (ratio >= 0.3) return { ...base, kind: "neutral", ratio, text: head + "Neutral: flatter than an ordinary hot star. Reflected sunlight, a star with an infrared excess, or a warm brown dwarf (the real pair Epsilon Indi B measured 0.65 here). A cool M dwarf is not far below this range, so do not read it as a classification." };
   return { ...base, kind: "star", ratio, text: head + "Star-like: it fades toward long wavelengths like an ordinary star." };
 }

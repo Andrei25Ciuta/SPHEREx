@@ -228,5 +228,24 @@ for (const id of ["barnard", "wise0855", "epsindb"]) {
   check("images out of time order are rejected", threw);
 }
 
+// ---------------------------------------------------------------- 6) few images: a line seen in only half of them is not enough
+{
+  // Real data (7 Nov 2026, Epsilon Indi B, detector D6): 6 images with ~9 dots each gave 3 FALSE candidates, each a line through
+  // dots of just 3 of the 6 images (60-85 arcsec/yr). The default now asks for 60 % of the images (4 of 6).
+  const mjds = [60800, 60802, 60983, 60985, 61168, 61170];
+  const stars = [[10, 12], [40, 20], [22, 44], [35, 8], [5, 30], [45, 40], [28, 26], [15, 5]];
+  const make = (visibleIn) => mjds.map((mjd, k) => {
+    const years = (mjd - 60985) / 365.25;
+    const sources = stars.map(([x, y]) => ({ x, y, snr: 20 }));
+    if (visibleIn.includes(k)) sources.push({ x: 25 + 1.7 * years, y: 20 - 0.9 * years, snr: 20 });
+    return { mjd, sources };
+  });
+  const three = make([0, 2, 4]), all = make([0, 1, 2, 3, 4, 5]), four = make([0, 1, 2, 4]);
+  check("a line through dots of only 3 of 6 images is not reported by default", findMovers(three).candidates.length === 0);
+  check("... but it is when the rule is relaxed to half of the images (the old default)", findMovers(three, { minDetectionFraction: 0.5 }).candidates.length === 1);
+  check("a real mover seen in all 6 images, or in 4 of 6, is reported", findMovers(all).candidates.length === 1 && findMovers(four).candidates.length === 1,
+    `${findMovers(all).candidates.length} / ${findMovers(four).candidates.length}`);
+}
+
 console.log(failed ? `\n${failed} check(s) FAILED` : "\nAll checks passed");
 process.exitCode = failed ? 1 : 0;

@@ -28,7 +28,8 @@ export const DEFAULTS = {
   staticRadiusPx: 1.2,      // dots this close in two passes are tried first (still stars, slow movers)
   minPassGapDays: 30,       // images less than this apart are one survey pass
   maxSpeedPxPerYear: 60,    // fastest motion we look for (60 px/yr = 370"/yr)
-  minDetections: 3,         // a line needs this many dots ... and at least half of the images
+  minDetections: 3,         // a line needs this many dots ... and at least this fraction of the images:
+  minDetectionFraction: 0.6,   // was 0.5: with 6 images and ~9 dots each, 3 chance matches gave 3 false candidates on real data (Epsilon Indi B, D6)
   maxRmsPx: 0.8,            // the dots must lie this close to their fitted line (rms)
   minMotionPx: 0.8,         // total motion over the observed period (about 5")
   minSignificance: 6,       // speed divided by its uncertainty
@@ -246,7 +247,7 @@ function findMoversOnce(frames, o) {
     return { candidates: [], stats, reason: `needs images from at least 3 survey passes (found ${nEpochs})` };
   }
   const minEpochs = Math.min(nEpochs, Math.max(3, Math.ceil(nEpochs / 2)));
-  const minDet = Math.max(o.minDetections, Math.ceil(N / 2));
+  const minDet = Math.max(o.minDetections, Math.ceil(o.minDetectionFraction * N));
   const epochsOf = (members) => new Set(members.map((d) => epoch[d.k])).size;
 
   const dots = frames.map((f, k) => f.sources.map((s) => ({ k, x: s.x, y: s.y, snr: s.snr ?? 0, used: false })));

@@ -22,7 +22,7 @@
 | 0:20 | "Blink: the same detector on different dates. Stars stay still. WISE 0855, the coldest known brown dwarf, jumps. Difference removes the stars: orange where it is now, blue where it was." **[sintetic]** | Click *WISE 0855*, play, switch to *Difference* |
 | 0:50 | "One button, *Find movers*, finds the dots, links them across survey passes and lists what moved: speed, direction, significance, and whether it is already known. SPHEREx is a spectrometer, so for each candidate we measure it where it was on every date and plot its spectrum: a colour hint tells a brown dwarf from a star." | *Find movers*, click a candidate, *Spectrum along its path* |
 | 1:20 | "A planet hundreds of AU away does not move in a straight line: as the Earth goes round the Sun it swings back and forth, in a loop. A straight-line search cannot see it. Our Planet X mode asks which dots follow that swing, and reads off the distance. Here, a **simulated** body at 600 AU: recovered at 601. No planet is claimed." **[sintetic]** | Planet X demo, *Look for a distant body*, show the drawn path |
-| 1:55 | "Is it real? We ran Find movers blind on real SPHEREx pixels: Barnard's Star and Epsilon Indi B, no hint. Both found, zero false candidates, and in two of the three runs the motion is within 0.6 arcseconds per year of the catalogue. It also showed us a failure: in one detector Barnard's Star is saturated and comes out 3.7 off. It is written down." **[real]** | Slide with the table of [VALIDATION.md](VALIDATION.md) §2 |
+| 1:55 | "Is it real? We ran Find movers blind on real SPHEREx pixels: Barnard's Star and Epsilon Indi B, no hint. Found in all four runs, and in three of them the motion is within 0.6 arcseconds per year of the catalogue. It also showed us two failures: in one detector Barnard's Star is saturated and comes out 3.7 off, and one run first gave three false candidates, which made us tighten a rule. Both are written down. And the asteroid check found a real asteroid, Arosa, in a real image, one arcsecond from where the ephemeris says." **[real]** | Slide with the table of [VALIDATION.md](VALIDATION.md) §2 |
 | 2:35 | "Everything is open, runs in a browser with no install, and every export says whether its data is real or synthetic. Over three hundred automated checks. The demo you saw is synthetic; the validation was real." | Export CSV, the data badge |
 | 2:55 | "SPHEREx Blink: find what moves." | Title |
 
@@ -33,7 +33,7 @@
 3. **Find movers + spectrum along the path**: one candidate list, known objects labelled, colour hint.
 4. **Planet X mode**: a drawing of the Earth's orbit and the loop a distant body makes; "straight line vs loop".
 5. **Validation on real data**: the table of §2 of [VALIDATION.md](VALIDATION.md), including the failure.
-6. **What we do not claim**: Planet X mode never run on real data; no real asteroid detected yet; colour hint not yet used on a real object.
+6. **What we do not claim**: Planet X mode never run on real data; the asteroid detection is one image (no proof of motion); the colour hint gave "neutral" for a real brown dwarf and cannot separate an M dwarf from an early T dwarf; one test run was tuned after it failed.
 7. **Credits and honesty**: sources ([CREDITS.md](../CREDITS.md)), built with Claude Code, repository started 2026-11-05, links.
 
 ## 3. The five judging criteria
@@ -42,7 +42,7 @@
 |---|---|
 | **Impact** | Turns "stare at 2,000-pixel images" into one button and a ranked list; runs in any browser; exports for follow-up (CSV/JSON, each row says what the data is and links back). |
 | **Creativity** | Planet X mode: distance from the Earth-parallax swing, searched as triples of dots from three passes; spectrum measured along the moving object's path. |
-| **Validity** | Blind test on real data (3 of 3 recovered, 0 false); 342 automated tests; a failure documented instead of hidden; every claim labelled real or synthetic. |
+| **Validity** | Blind test on real data (4 of 4 runs recovered; 0 false with the final rule, after one run showed 3); a real asteroid found where predicted; 349 automated checks; failures documented instead of hidden; every claim labelled real or synthetic. |
 | **Relevance** | The challenge is "Planet X and SPHEREx": moving objects in SPHEREx images, and what separates a nearby mover from a distant planet. |
 | **Presentation** | A 1-minute guided tour that works offline, a labelled GIF, this script, a README that starts with what is real and what is not. |
 
@@ -50,11 +50,13 @@
 
 | Number | Source |
 |---|---|
-| 3 of 3 real fast movers recovered blind, 0 false candidates | [VALIDATION.md](VALIDATION.md) §2 (`scratch/validate_real.mjs`) |
-| Motion within 0.55 and 0.61 ″/yr of the catalogue (Barnard D6, Epsilon Indi B D2) | same |
+| Fast movers recovered blind in 4 of 4 real runs; 0 false candidates with the final rule (the first run on Epsilon Indi B D6 had 3, which changed the rule) | [VALIDATION.md](VALIDATION.md) §2 (`scratch/validate_real.mjs`) |
+| Motion within 0.54, 0.55 and 0.61 ″/yr of the catalogue (Epsilon Indi B D6, Barnard D6, Epsilon Indi B D2) | same |
+| Real asteroid Arosa (V 14.6) seen at 107 σ, 1.0″ from its predicted position, in one real image; no 2MASS star there | [VALIDATION.md](VALIDATION.md) §6 |
+| Colour ratio of Epsilon Indi B (real brown-dwarf pair): 0.65, "neutral" | [VALIDATION.md](VALIDATION.md) §3 |
 | Barnard D2: 3.72 ″/yr off, cause unknown (saturated core is the hypothesis) | same, "Open problem" |
 | Simulated body at 600 AU recovered at 600-601 AU | [VALIDATION.md](VALIDATION.md) §5 (`scratch/test_parallax.mjs`) |
-| 111 backend tests + 231 browser-side checks (7 Nov 2026) | `pytest backend`, `node scratch/test_*.mjs` |
+| 111 backend tests + 238 browser-side checks (7 Nov 2026) | `pytest backend`, `node scratch/test_*.mjs` |
 | SkyBoT answers 15 image dates in 9 s | [VALIDATION.md](VALIDATION.md) §6 |
 
 ## 5. Do **not** say
@@ -63,7 +65,9 @@
 - "Planet X mode works on real data". It has only been run on synthetic data.
 - "Calibrated SPHEREx spectra". The fluxes are quick aperture sums in Jansky, uncalibrated by us.
 - "It works for any field". It was tested on three real cutouts.
-- "The colour classification is validated". It has not been used on a real object yet.
+- "The colour classification is validated". On the one real object where both bands exist (a brown-dwarf pair) it said "neutral", and it cannot separate an M dwarf from an early T dwarf.
+- "No false candidates, ever". One run had three before we tightened a rule; that run is no longer an independent test.
+- "We proved that asteroid moves". It is one image; the proof would be its absence from the same spot on another date (not downloaded).
 
 ## 6. Questions you may get
 
@@ -71,11 +75,11 @@
 
 **Why not machine learning?** The signal is geometry (a dot in different places on different dates), which is explainable and needs no training set. A judge can read why a candidate was listed.
 
-**How do you know the real-data result is not just tuned?** The thresholds were fixed on synthetic data and on Barnard's Star; Epsilon Indi B was downloaded after that, so it is a second, untuned field (as far as our records show). Still only two objects.
+**How do you know the real-data result is not just tuned?** The thresholds were first fixed on synthetic data and on Barnard's Star; Epsilon Indi B was downloaded after that and was found in both detectors. But its D6 run first produced three false candidates, and we then tightened a rule (60 % of the images instead of half). That run is no longer an independent test, and it is still only two objects.
 
 **What does "saturated" mean here?** Barnard's Star is so bright that the FLAGS bits for overflow and transient are set in much of its core. Its position in one detector is 3.7 ″/yr off; we say so and do not know the cause yet.
 
-**Do you detect real asteroids?** The overlay and the matching work (SkyBoT, per image date; for the one body in our Barnard field our projection puts it 231.6″ from the centre and the service says 231.571″), but the only bodies in our real cutouts were too faint to see, so there is no positive detection yet.
+**Do you detect real asteroids?** The overlay and the matching work (SkyBoT, per image date; for the one body in our Barnard field our projection puts it 231.6″ from the centre and the service says 231.571″), and in one real image it found the asteroid Arosa (V 14.6) at 107 σ, 1.0″ from where SkyBoT predicts it, with no 2MASS star there. That is one image: the proof it moves would be a second image where the spot is empty.
 
 **How precise is the distance?** On synthetic data, within about 1 % statistically. On real data we cannot say; systematics (ephemeris, a straight own motion) are not in the quoted range.
 
@@ -87,7 +91,7 @@
 
 **What did the AI do?** The project was built with Claude Code (Anthropic) and says so in the README and [CREDITS.md](../CREDITS.md). *Add, in your own words, what you decided and what you ran and checked yourself.*
 
-**What is next?** A positive asteroid test on a bright body; using the pixel flags as a mask for saturated stars; colour class on a real brown dwarf (needs the 4-5 µm cutouts of Epsilon Indi B, about 25 MB); linking across several fields for Planet X.
+**What is next?** The second image of the same asteroid (about 5 MB), to show its spot empty on the other date; using the pixel flags as a mask for saturated stars; a colour test on more real objects, including a cooler one; a new field to test the tightened rule independently; linking across several fields for Planet X.
 
 ## 7. If something breaks live
 

@@ -48,6 +48,22 @@ check("Jansky is used when every measurement has it", fluxColumn(withJy) === "fl
 check("... but not when some are missing", fluxColumn(withJy.map((p, i) => (i === 0 ? { ...p, fluxJy: null } : p))) === "flux");
 check("the bands are the documented ones", BANDS.short[0] === 0.7 && BANDS.long[1] === 5.1);
 
+// ---------------------------------------------------------------- REAL measurements (7 Nov 2026), kept as a regression
+// Epsilon Indi B along its path, real SPHEREx D2 + D6 cutouts (backend /api/photometry, fluxes in mJy; flagged = bad-pixel bits in the aperture).
+{
+  const row = (wavelengthUm, mJy, flagged = false) => ({ wavelengthUm, flux: mJy, fluxJy: mJy / 1e3, flagged });
+  const epsIndB = [row(1.245, 34.55), row(4.425, 23.80), row(1.613, 35.44), row(4.456, 22.97, true), row(1.275, 40.56), row(4.912, 20.97),
+    row(1.163, 15.61, true), row(1.542, 31.40, true), row(1.109, 13.57), row(1.188, 19.29), row(1.540, 32.65, true), row(4.688, 21.41),
+    row(4.439, 23.26), row(4.661, 22.06, true), row(1.579, 39.06), row(1.175, 15.11), row(1.353, 5.49, true)];
+  const h = colourHint(epsIndB);
+  check("REAL Epsilon Indi B (D2 + D6): 7 usable points at 1-2 um, 4 at 4-5 um", h.nShort === 7 && h.nLong === 4, `${h.nShort} / ${h.nLong}`);
+  check("REAL Epsilon Indi B: ratio 0.65 -> 'neutral' (not 'red': a T dwarf pair is not as red as WISE 0855)", h.kind === "neutral" && Math.abs(h.ratio - 0.65) < 0.02, `${h.kind}, ${h.ratio?.toFixed(3)}`);
+  check("the neutral text admits it is not a classification and mentions brown dwarfs", /brown dwarf/.test(h.text) && /not read it as a classification/.test(h.text));
+  // Barnard's Star, real: every measurement flagged (overflow in the core) -> no judgement at all
+  const barnard = [row(1.101, 5760, true), row(1.21, 2750, true), row(4.922, 3330, true), row(4.709, 3860, true)];
+  check("REAL Barnard's Star: all flagged -> unknown, with the reason", colourHint(barnard).kind === "unknown" && colourHint(barnard).nFlagged === 4);
+}
+
 // ---------------------------------------------------------------- end to end on the mock sky
 // The mock mover (12 px/yr, brighter at long wavelengths) is measured along its path, and again at one fixed position.
 {
