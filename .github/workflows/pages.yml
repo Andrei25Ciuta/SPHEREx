@@ -1,12 +1,12 @@
 # Publishes ONLY the static frontend (folder `frontend/`) as a GitHub Pages demo.
-# The demo runs on synthetic mock data (the page says so in its header badge); no backend, no data files.
+# The main demo runs on synthetic mock data (the page says so in its header badge); no backend, no data files.
 #
 # One-time setup on GitHub: Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
 name: Deploy demo to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [infrared-discovery]
   workflow_dispatch:
 
 permissions:
