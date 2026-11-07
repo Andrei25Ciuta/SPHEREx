@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Infrared Source Discovery | SPHEREx Blink</title>
+<style>body{background:#080e1e;color:#e9efff;font:16px system-ui;margin:0}main{max-width:1050px;margin:auto;padding:28px}a{color:#86c9ff}button,input{padding:9px;margin:5px;background:#17294b;color:white;border:1px solid #4d6c9a;border-radius:7px}button{cursor:pointer}canvas{max-width:100%;border:1px solid #465b7d}table{border-collapse:collapse;width:100%}td,th{padding:8px;border-bottom:1px solid #30405d;text-align:left}.hint{color:#a9b8d0}.layout{display:grid;grid-template-columns:1fr 1fr;gap:22px}@media(max-width:700px){.layout{grid-template-columns:1fr}}</style></head>
+<body><main><p><a href="./">← SPHEREx Blink</a></p><h1>Infrared Source Discovery <small>(experimental)</small></h1>
+<p>Detect bright <strong>spatial</strong> infrared source candidates, including stationary sources. Upload a 2-D FITS science image, or try a clearly labelled synthetic example. No catalog crossmatch or astronomical discovery is claimed.</p>
+<label>FITS image <input id="file" type="file" accept=".fits,.fit,.fts"></label>
+<label>Detection threshold (σ) <input id="sigma" type="number" min="3" max="30" step="1" value="5"></label>
+<button id="demo">Load synthetic example</button><button id="detect">Detect sources</button>
+<p id="status" role="status" class="hint">No image loaded.</p>
+<div class="layout"><div><canvas id="sky" width="400" height="400"></canvas><p class="hint">Circles indicate detected peaks, not identified objects. Pixel coordinates are 0-based.</p></div>
+<div><h2>Candidates</h2><p id="stats" class="hint"></p><div style="max-height:470px;overflow:auto"><table><thead><tr><th>x</th><th>y</th><th>Peak S/N</th></tr></thead><tbody id="rows"></tbody></table></div></div></div>
+<p class="hint">Limitations: only uncompressed, single-image 2-D FITS primary HDUs with BITPIX -32, -64, 16 or 32; BSCALE/BZERO supported. Global median/MAD threshold, not PSF photometry. No artifact flags or WCS coordinate conversion. Browser-only processing; your file stays on your computer.</p></main>
+<script>
+"use strict";
+let data=null,w=0,h=0,synthetic=false,peaks=[];
+const $=id=>document.getElementById(id), status=s=>$("status").textContent=s;
+function parseFITS(buffer){
+ const v=new DataView(buffer), decoder=new TextDecoder("ascii");let pos=0,header={};let found=false;
+ while(pos+80<=buffer.byteLength){
+  const card=decoder.decode(new Uint8Array(buffer,pos,80));pos+=80;
+  if(card.slice(0,3)==="END"){found=true;break;}
+  if(card[8]==="="){let raw=card.slice(10).split("/")[0].trim();header[card.slice(0,8).trim()]=raw.replace(/^'|'$/g,"").trim();}
+ }
+ if(!found||Number(header.NAXIS)!==2)throw Error("Expected a 2-D FITS primary HDU.");
+ const width=Number(header.NAXIS1),height=Number(header.NAXIS2),bit=Number(header.BITPIX);
+ if(!Number.isSafeInteger(width)||!Number.isSafeInteger(height)||width<5||height<5||width*height>4000000)throw Error("Image dimensions invalid or larger than 4 million pixels.");
+ const bytes=Math.abs(bit)/8;if(![-64,-32,16,32].includes(bit))throw Error("Unsupported BITPIX "+bit);
+ const offset=Math.ceil(pos/2880)*2880;if(offset+width*height*bytes>buffer.byteLength)throw Error("FITS data truncated.");
+ const scale=Number(header.BSCALE??1),zero=Number(header.BZERO??0);if(!Number.isFinite(scale)||!Number.isFinite(zero))throw Error("Invalid scaling");
+ const out=new Float64Array(width*height);
+ for(let i=0;i<out.length;i++){const p=offset+i*bytes;let val=bit===-32?v.getFloat32(p,false):bit===-64?v.getFloat64(p,false):bit===16?v.getInt16(p,false):v.getInt32(p,false);out[i]=val*scale+zero;}
+ return {width,height,pixels:out};
+}
+function median(a){a.sort((x,y)=>x-y);let n=a.length;return n%2?a[(n-1)/2]:(a[n/2-1]+a[n/2])/2;}
+function detect(){
+ if(!data){status("Load an image first.");return;}
+ const sig=Number($("sigma").value);if(!(sig>=3&&sig<=30)){status("Threshold must be 3–30.");return;}
+ const valid=Array.from(data).filter(Number.isFinite);if(valid.length<25){status("Not enough valid pixels.");return;}
+ const bg=median(valid.slice()),noise=1.4826*median(valid.map(x=>Math.abs(x-bg)));
+ peaks=[];if(noise>0){
+  const ranked=[];for(let y=3;y<h-3;y++)for(let x=3;x<w-3;x++){const i=y*w+x;if(data[i]>bg+sig*noise){let local=true;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++)if(data[(y+dy)*w+x+dx]>data[i])local=false;if(local)ranked.push({x,y,snr:(data[i]-bg)/noise});}}
+  ranked.sort((a,b)=>b.snr-a.snr);for(const p of ranked){if(peaks.every(q=>(q.x-p.x)**2+(q.y-p.y)**2>=9))peaks.push(p);if(peaks.length>=200)break;}
+ }
+ $("rows").replaceChildren();for(const p of peaks){let tr=document.createElement("tr");for(const n of [p.x,p.y,p.snr.toFixed(1)]){let td=document.createElement("td");td.textContent=n;tr.append(td)}$("rows").append(tr)}
+ $("stats").textContent=peaks.length+" candidate peaks; background "+bg.toPrecision(4)+", robust noise "+noise.toPrecision(4);
+ status((synthetic?"SYNTHETIC EXAMPLE — ":"FITS file — ")+peaks.length+" peaks detected. These are NOT confirmed astronomical objects.");draw();
+}
+function draw(){
+ if(!data)return;const canvas=$("sky");canvas.width=w;canvas.height=h;const ctx=canvas.getContext("2d"),img=ctx.createImageData(w,h);
+ const vals=Array.from(data).filter(Number.isFinite);let lo=median(vals.slice()),dev=1.4826*median(vals.map(v=>Math.abs(v-lo)));dev=Math.max(dev,1e-10);
+ for(let i=0;i<data.length;i++){let t=Number.isFinite(data[i])?Math.max(0,Math.min(1,(data[i]-lo+dev)/(9*dev))):0;let c=Math.round(255*Math.sqrt(t));img.data.set([c,c,c,255],i*4)}
+ ctx.putImageData(img,0,0);ctx.strokeStyle="#ff6e58";ctx.lineWidth=Math.max(1,w/350);
+ for(const p of peaks){ctx.beginPath();ctx.arc(p.x,p.y,Math.max(4,w/120),0,Math.PI*2);ctx.stroke()}
+}
+$("file").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;try{const a=parseFITS(await f.arrayBuffer());w=a.width;h=a.height;data=a.pixels;synthetic=false;peaks=[];$("rows").replaceChildren();$("stats").textContent="";draw();status("Loaded "+f.name+" ("+w+"×"+h+"). Click Detect sources.")}catch(err){data=null;status("Cannot load FITS: "+err.message)}});
+$("demo").addEventListener("click",()=>{w=200;h=200;synthetic=true;data=new Float64Array(w*h);let seed=19;const rand=()=>{seed=(1664525*seed+1013904223)>>>0;return seed/4294967296};for(let i=0;i<data.length;i++)data[i]=(rand()+rand()+rand()+rand()-2)*2;for(const [cx,cy,amp] of [[35,45,35],[101,82,24],[160,142,50],[68,163,19]])for(let y=0;y<h;y++)for(let x=0;x<w;x++)data[y*w+x]+=amp*Math.exp(-((x-cx)**2+(y-cy)**2)/7);peaks=[];draw();status("SYNTHETIC EXAMPLE loaded. Click Detect sources.")});
+$("detect").addEventListener("click",detect);
+</script></body></html>
