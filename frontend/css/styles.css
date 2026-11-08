@@ -695,3 +695,25 @@ body::before {
 .info-links a { padding: .5rem .9rem; border: 1px solid var(--border); color: var(--text); text-decoration: none; font-weight: 500; }
 .info-links a:hover { border-color: var(--accent); color: var(--accent-hi); }
 @media (max-width: 860px) { .info-top { grid-template-columns: 1fr; } }
+
+/* Infrared Explorer: the map remains the main workspace; results are optional. */
+.skyframe .skymap { height: clamp(520px, 70vh, 980px); }
+.skyframe #infrared-results { margin-top: .75rem; padding: .8rem; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); }
+.skyframe #infrared-results[hidden] { display: none !important; }
+.skyframe #infrared-results table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+.skyframe #infrared-results th, .skyframe #infrared-results td { padding: .48rem .65rem; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.skyframe #infrared-results tbody tr { cursor: pointer; }
+.skyframe #infrared-results tbody tr:hover, .skyframe #infrared-results tbody tr:focus { background: rgba(80,180,200,.13); outline: 1px solid var(--border); }
+.context-controls .infrared-check { display: inline-flex; align-items: center; gap: .35rem; white-space: nowrap; }
+.context-controls .infrared-check input { accent-color: #ff6f91; }
+.context-controls #infrared-sigma { min-width: 125px; }
+.skyframe.is-fullscreen { overflow: hidden; }
+.skyframe.is-fullscreen .skymap { flex: 1 1 0; min-height: 0; height: 100%; }
+.skyframe.is-fullscreen #infrared-results:not([hidden]) { flex: 0 0 auto; max-height: 24vh; overflow: auto; }
+.skyframe.is-fullscreen #infrared-results .table-scroll { max-height: 14vh !important; }
+.skyframe.is-fullscreen #sky-geo-note { display: none; }
+@media (max-width: 860px) {
+  .skyframe .skymap { height: max(460px, 64vh); }
+  .skyframe.is-fullscreen .skymap { height: 100%; min-height: 0; }
+  .skyframe.is-fullscreen #infrared-results:not([hidden]) { max-height: 28vh; }
+}
