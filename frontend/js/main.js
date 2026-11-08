@@ -641,7 +641,8 @@ $("infrared-export").addEventListener("click", () => {
 function renderInfraredCandidates(groups) {
   const tbody = $("infrared-rows");
   tbody.replaceChildren();
-  // Keep the table collapsed so the sky map remains large.\n  $("infrared-toggle-results").textContent = $("infrared-results").hidden ? "Show candidates (" + groups.length + ")" : "Hide candidates";
+  // Keep the table collapsed so the sky map remains large.
+  $("infrared-toggle-results").textContent = $("infrared-results").hidden ? "Show candidates (" + groups.length + ")" : "Hide candidates";
   for (const [i, s] of groups.entries()) {
     const row = document.createElement("tr");
     const cells = [i + 1, s.ra.toFixed(5), s.dec.toFixed(5), s.bands.join(", "),
@@ -716,7 +717,9 @@ $("infrared-map-btn").addEventListener("click", async () => {
       detector: s.bands.join(", "),
       synthetic: DATA_SOURCE !== "api" || !isFloat,
     })));
-    sky.showInfraredMarkers($("infrared-show-candidates").checked);\n    sky.showSimbadMarkers($("infrared-show-simbad").checked);\n    renderInfraredCandidates(groups);
+    sky.showInfraredMarkers($("infrared-show-candidates").checked);
+    sky.showSimbadMarkers($("infrared-show-simbad").checked);
+    renderInfraredCandidates(groups);
     const origin = DATA_SOURCE === "api" && isFloat
       ? "real FITS-derived pixels" : "SYNTHETIC / display pixels, NOT real SPHEREx measurements";
     status.textContent = `${groups.length} spatial candidates from ${frames.length} frames across ${byBand.size} detector(s). ${catalogueNote}. ${origin}. No motion filtering; no calibrated spectral classification.`;
