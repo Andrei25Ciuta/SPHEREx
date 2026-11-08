@@ -15,6 +15,7 @@ import { DATA_SOURCE } from "./config.js";
 import { BlinkPlayer, MODES, loadImage, meanImageData } from "./player.js";
 import { canvasToSky, measureAndPlot, clearMeasurement, APERTURE_RADIUS_PX } from "./features/measure.js";
 import { SkyContext } from "./features/skyContext.js";
+import { groupInfraredDetections, matchInfraredCatalogue } from "./features/infraredExplorer.js";
 import { setupFullscreen } from "./features/fullscreen.js";
 import { findMoversAcrossDetectors, detectSources, describeMover, matchKnownObject, moverPositionAtMjd, passIndices, trackSupport, blendWarning } from "./features/movers.js";
 import { colourHint } from "./features/spectrum.js";
@@ -608,50 +609,112 @@ $("aladin-btn").addEventListener("click", async () => {
 });
 $("survey-select").addEventListener("change", (e) => sky.setSurvey(e.target.value));
 
-/** Detect spatial peaks, not trajectories, and place them on the existing Aladin sky map. */
+/** Infrared explorer: sources are grouped by position, never by motion. */
+let infraredCandidates = [];
+$("infrared-export").addEventListener("click", () => {
+  if (!infraredCandidates.length) return;
+  const csv = [
+    "rank,ra_deg,dec_deg,bands,peak_snr,priority_score,simbad_match,match_sep_arcsec,data_type",
+    ...infraredCandidates.map((s, i) => [
+      i + 1, s.ra.toFixed(7), s.dec.toFixed(7), '"' + s.bands.join(";") + '"',
+      s.maxSnr.toFixed(2), s.score,
+      '"' + (s.match?.name || "").replaceAll('"', '""') + '"',
+      s.match ? s.match.separationArcsec.toFixed(1) : "",
+      DATA_SOURCE === "api" ? "API source" : "SYNTHETIC DEMO",
+    ].join(",")),
+  ].join("\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url; link.download = "spherex-infrared-candidates.csv";
+  document.body.append(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+function renderInfraredCandidates(groups) {
+  const tbody = $("infrared-rows");
+  tbody.replaceChildren();
+  $("infrared-results").hidden = false;
+  for (const [i, s] of groups.entries()) {
+    const row = document.createElement("tr");
+    const cells = [i + 1, s.ra.toFixed(5), s.dec.toFixed(5), s.bands.join(", "),
+      s.maxSnr.toFixed(1), s.score + "/100", s.match ? s.match.name : "No nearby SIMBAD match"];
+    for (const value of cells) {
+      const td = document.createElement("td"); td.textContent = String(value); row.append(td);
+    }
+    row.tabIndex = 0;
+    const select = () => {
+      $("infrared-detail").textContent = `Candidate #${i + 1}: ${s.members.length} detected peaks in ${s.bands.length} detector band(s); ${s.wavelengthRange ? s.wavelengthRange.map(x => x.toFixed(2)).join("–") + " µm" : "wavelength unknown"}. ${s.match ? "Nearby SIMBAD: " + s.match.name + " (" + s.match.separationArcsec.toFixed(1) + " arcsec)." : "No SIMBAD match in search radius; not proof of novelty."} Relative intensity across different frames is NOT calibrated spectral flux.`;
+      if (sky.isOpen) sky.aladin.gotoRaDec(s.ra, s.dec);
+    };
+    row.addEventListener("click", select);
+    row.addEventListener("keydown", e => { if (e.key === "Enter") select(); });
+    tbody.append(row);
+  }
+  if (!groups.length) $("infrared-detail").textContent = "No peaks exceeded the detection threshold in the sampled frames.";
+}
 $("infrared-map-btn").addEventListener("click", async () => {
   const btn = $("infrared-map-btn"), status = $("infrared-map-status");
   const query = currentQuery || readForm();
   if (!query) { status.textContent = "Enter valid sky coordinates first."; return; }
-  if (!currentFrames.length || !player.naturalSize) {
+  if (!allFrames.length || !player.naturalSize) {
     status.textContent = "Load a sky field first (Search), then detect infrared sources.";
     return;
   }
   const token = loadToken;
   btn.disabled = true;
-  status.textContent = "Detecting infrared peaks in the loaded field…";
+  status.textContent = "Scanning available detector bands for infrared peaks…";
   try {
-    // The reddest available band can reveal sources faint at shorter wavelengths.
-    const frame = [...currentFrames].sort((a, b) =>
-      (b.wavelengthMaxUm ?? 0) - (a.wavelengthMaxUm ?? 0))[0];
-    const { arrays, masks, isFloat } = await detectionPixels([frame]);
-    if (!arrays?.[0]) throw new Error("Image pixels unavailable");
+    // Up to two exposures per detector. This limits browser memory and avoids
+    // pretending a single exposure is a full 102-channel SPHEREx spectrum.
+    const byBand = new Map();
+    for (const frame of allFrames) {
+      const band = frame.detector || "unknown";
+      if (!byBand.has(band)) byBand.set(band, []);
+      if (byBand.get(band).length < 2) byBand.get(band).push(frame);
+    }
+    const frames = [...byBand.values()].flat().slice(0, 12);
+    const { arrays, masks, isFloat } = await detectionPixels(frames);
+    if (!arrays?.length || arrays.some(a => !a)) throw new Error("Image pixels unavailable");
     if (token !== loadToken) return;
-    const n = player.naturalSize;
-    const peaks = detectSources(arrays[0], n, {
-      detectSigma: 5,
-      mask: masks?.[0] ?? null,
-    }).sort((a, b) => b.snr - a.snr).slice(0, 150);
+    const n = player.naturalSize, detections = [];
+    frames.forEach((frame, i) => {
+      const geo = { ra: query.ra, dec: query.dec, n,
+        scaleArcsec: frame.pixelScaleArcsec ?? query.fov * 60 / n };
+      const peaks = detectSources(arrays[i], n, { detectSigma: 5, mask: masks?.[i] ?? null })
+        .sort((a,b) => b.snr - a.snr).slice(0, 200);
+      for (const p of peaks) {
+        detections.push({
+          ...canvasToSky(p.x / n, p.y / n, geo),
+          snr: p.snr, detector: frame.detector || "unknown",
+          wavelengthUm: (frame.wavelengthMinUm + frame.wavelengthMaxUm) / 2,
+          frameId: i,
+        });
+      }
+    });
+    let groups = groupInfraredDetections(detections);
+    // SIMBAD is a contextual catalogue, not a WISE photometric crossmatch.
+    let catalogueNote = "SIMBAD unavailable";
+    try {
+      const objects = await fetchCatalogue(query.ra, query.dec, query.fov);
+      groups = matchInfraredCatalogue(groups, objects);
+      catalogueNote = "SIMBAD checked";
+    } catch (err) { console.warn("SIMBAD lookup unavailable", err); }
+    if (token !== loadToken) return;
     await openSkyMap(query);
     if (token !== loadToken || !sky.isOpen) return;
-    const geo = {
-      ra: query.ra, dec: query.dec, n,
-      scaleArcsec: frame.pixelScaleArcsec ?? query.fov * 60 / n,
-    };
-    sky.setInfraredSources(peaks.map((p) => ({
-      ...canvasToSky(p.x / n, p.y / n, geo),
-      snr: p.snr, detector: frame.detector || "unknown",
+    infraredCandidates = groups;
+    sky.setInfraredSources(groups.map(s => ({
+      ra: s.ra, dec: s.dec, snr: s.maxSnr,
+      detector: s.bands.join(", "),
       synthetic: DATA_SOURCE !== "api" || !isFloat,
     })));
+    renderInfraredCandidates(groups);
     const origin = DATA_SOURCE === "api" && isFloat
-      ? "real FITS-derived pixels" : "SYNTHETIC / display pixels (not real SPHEREx detections)";
-    status.textContent = `${peaks.length} infrared peaks shown on the map from ${frame.detector || "selected detector"} (${origin}). Peaks are not confirmed or catalog-matched objects; movement was not used.`;
+      ? "real FITS-derived pixels" : "SYNTHETIC / display pixels, NOT real SPHEREx measurements";
+    status.textContent = `${groups.length} spatial candidates from ${frames.length} frames across ${byBand.size} detector(s). ${catalogueNote}. ${origin}. No motion filtering; no calibrated spectral classification.`;
   } catch (err) {
     console.error(err);
     status.textContent = "Infrared map detection failed: " + (err.message || err);
-  } finally {
-    btn.disabled = false;
-  }
+  } finally { btn.disabled = false; }
 });
 
 
