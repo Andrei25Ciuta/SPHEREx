@@ -639,27 +639,40 @@ $("infrared-export").addEventListener("click", () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 function renderInfraredCandidates(groups) {
-  const tbody = $("infrared-rows");
-  tbody.replaceChildren();
-  // Keep the table collapsed so the sky map remains large.
-  $("infrared-toggle-results").textContent = $("infrared-results").hidden ? "Show candidates (" + groups.length + ")" : "Hide candidates";
+  const container = $("infrared-rows");
+  container.replaceChildren();
+  $("infrared-toggle-results").textContent = $("infrared-results").hidden
+    ? "Show candidates (" + groups.length + ")" : "Hide candidates";
   for (const [i, s] of groups.entries()) {
-    const row = document.createElement("tr");
-    const cells = [i + 1, s.ra.toFixed(5), s.dec.toFixed(5), s.bands.join(", "),
-      s.maxSnr.toFixed(1), s.score + "/100", s.match ? s.match.name : "No nearby SIMBAD match"];
-    for (const value of cells) {
-      const td = document.createElement("td"); td.textContent = String(value); row.append(td);
-    }
-    row.tabIndex = 0;
-    const select = () => {
-      $("infrared-detail").textContent = `Candidate #${i + 1}: ${s.members.length} detected peaks in ${s.bands.length} detector band(s); ${s.wavelengthRange ? s.wavelengthRange.map(x => x.toFixed(2)).join("–") + " µm" : "wavelength unknown"}. ${s.match ? "Nearby SIMBAD: " + s.match.name + " (" + s.match.separationArcsec.toFixed(1) + " arcsec)." : "No SIMBAD match in search radius; not proof of novelty."} Relative intensity across different frames is NOT calibrated spectral flux.`;
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "infrared-candidate";
+    card.setAttribute("role", "listitem");
+    const title = document.createElement("span");
+    title.className = "infrared-candidate-title";
+    title.textContent = "IR #" + String(i + 1).padStart(2, "0");
+    const band = document.createElement("span");
+    band.className = "infrared-candidate-bands";
+    band.textContent = s.bands.join(" · ");
+    const signal = document.createElement("span");
+    signal.className = "infrared-candidate-signal";
+    signal.textContent = "S/N " + s.maxSnr.toFixed(1);
+    const coords = document.createElement("span");
+    coords.className = "infrared-candidate-coords";
+    coords.textContent = "RA " + s.ra.toFixed(4) + "° · Dec " + s.dec.toFixed(4) + "°";
+    const match = document.createElement("span");
+    match.className = "infrared-candidate-match";
+    match.textContent = s.match ? "SIMBAD: " + s.match.name : "No nearby SIMBAD match";
+    card.append(title, signal, band, coords, match);
+    card.addEventListener("click", () => {
+      container.querySelectorAll(".infrared-candidate").forEach(el => el.classList.remove("selected"));
+      card.classList.add("selected");
+      $("infrared-detail").textContent = `Candidate #${i + 1}: ${s.members.length} peaks in ${s.bands.length} bands; ${s.wavelengthRange ? s.wavelengthRange.map(x => x.toFixed(2)).join("–") + " µm" : "wavelength unknown"}. ${s.match ? "SIMBAD: " + s.match.name : "No nearby SIMBAD match (not proof of novelty)"}. These are not calibrated spectral measurements.`;
       if (sky.isOpen) sky.aladin.gotoRaDec(s.ra, s.dec);
-    };
-    row.addEventListener("click", select);
-    row.addEventListener("keydown", e => { if (e.key === "Enter") select(); });
-    tbody.append(row);
+    });
+    container.append(card);
   }
-  if (!groups.length) $("infrared-detail").textContent = "No peaks exceeded the detection threshold in the sampled frames.";
+  if (!groups.length) $("infrared-detail").textContent = "No peaks exceeded the detection threshold.";
 }
 $("infrared-map-btn").addEventListener("click", async () => {
   const btn = $("infrared-map-btn"), status = $("infrared-map-status");
