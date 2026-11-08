@@ -289,6 +289,18 @@
         <div id="aladin-box" class="skymap" hidden></div>
         <p class="muted small" id="aladin-status" aria-live="polite"></p>
         <p class="muted small" id="infrared-map-status" aria-live="polite">Infrared map: source detection does not require motion. Public demo detections are synthetic; real SPHEREx detections require a connected backend.</p>
+        <div id="infrared-results" hidden>
+          <h3>Infrared source candidates</h3>
+          <p class="muted small">Ranked by signal strength and detections across bands, not by movement. Scores are heuristic, not probabilities. A missing SIMBAD match does not mean a new discovery.</p>
+          <button type="button" class="btn btn-small" id="infrared-export">Export candidates CSV</button>
+          <div class="table-scroll" style="max-height:340px;overflow:auto">
+            <table aria-label="Infrared source candidates">
+              <thead><tr><th>Rank</th><th>RA</th><th>Dec</th><th>Bands</th><th>Peak S/N</th><th>Score</th><th>SIMBAD</th></tr></thead>
+              <tbody id="infrared-rows"></tbody>
+            </table>
+          </div>
+          <p class="muted small" id="infrared-detail" aria-live="polite">Select a candidate to inspect its band coverage.</p>
+        </div>
         <p class="muted small" id="sky-geo-note" hidden></p>
       </div>
     </section>
