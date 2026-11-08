@@ -283,10 +283,12 @@
             <option value="dss2">DSS2 (optical, 1950s–90s)</option>
           </select>
           <button type="button" class="btn btn-small" id="aladin-btn">Show sky map</button>
+          <button type="button" class="btn btn-small" id="infrared-map-btn">Find infrared sources</button>
           <button type="button" class="btn btn-small" id="sky-full-btn" hidden>Full screen</button>
         </div>
         <div id="aladin-box" class="skymap" hidden></div>
         <p class="muted small" id="aladin-status" aria-live="polite"></p>
+        <p class="muted small" id="infrared-map-status" aria-live="polite">Infrared map: source detection does not require motion. Public demo detections are synthetic; real SPHEREx detections require a connected backend.</p>
         <p class="muted small" id="sky-geo-note" hidden></p>
       </div>
     </section>
