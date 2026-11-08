@@ -206,6 +206,25 @@ export class SkyContext {
     this.ensureWorld();                  // not awaited: the map works at once, the country appears when the borders have arrived
   }
 
+  /** Show stationary or moving infrared source peaks on the existing interactive map. */
+  setInfraredSources(sources) {
+    if (!this.aladin || !this.A) return;
+    if (this.infraredCatalog) {
+      try { this.infraredCatalog.removeAll(); this.infraredCatalog.hide(); } catch { /* old overlay */ }
+    }
+    this.infraredCatalog = this.A.catalog({
+      name: "Infrared source candidates", color: "#ff6f91",
+      sourceSize: 12, shape: "circle", onClick: "showPopup",
+    });
+    this.aladin.addCatalog(this.infraredCatalog);
+    this.infraredCatalog.addSources(sources.map((s) => this.A.source(s.ra, s.dec, {
+      "Peak S/N": s.snr.toFixed(1),
+      "Detector": s.detector,
+      "Data": s.synthetic ? "SYNTHETIC DEMO" : "SPHEREx FITS cutout",
+      "Status": "Unverified infrared source candidate",
+    })));
+  }
+
   setSurvey(key) {
     this.survey = key;
     if (!this.aladin) return;
@@ -232,6 +251,9 @@ export class SkyContext {
       aladin.addOverlay(this.overlay);
     }
     this.overlay.add(A.polygon(squareCorners(ra, dec, fov)));
+
+    // Detections from the previous field must not remain on a new sky position.
+    if (this.infraredCatalog) { try { this.infraredCatalog.removeAll(); this.infraredCatalog.hide(); } catch { /* ignore */ } this.infraredCatalog = null; }
 
     // SIMBAD objects: drop the previous catalogue, load the new circle.
     if (this.simbad) { try { this.simbad.removeAll(); this.simbad.hide(); } catch { /* ignore */ } }
