@@ -609,6 +609,15 @@ $("aladin-btn").addEventListener("click", async () => {
 });
 $("survey-select").addEventListener("change", (e) => sky.setSurvey(e.target.value));
 
+$("infrared-toggle-results").addEventListener("click", () => {
+  const panel = $("infrared-results"), btn = $("infrared-toggle-results");
+  panel.hidden = !panel.hidden;
+  btn.textContent = panel.hidden ? "Show candidates" : "Hide candidates";
+  btn.setAttribute("aria-expanded", String(!panel.hidden));
+});
+$("infrared-show-candidates").addEventListener("change", e => sky.showInfraredMarkers(e.target.checked));
+$("infrared-show-simbad").addEventListener("change", e => sky.showSimbadMarkers(e.target.checked));
+
 /** Infrared explorer: sources are grouped by position, never by motion. */
 let infraredCandidates = [];
 $("infrared-export").addEventListener("click", () => {
@@ -632,7 +641,7 @@ $("infrared-export").addEventListener("click", () => {
 function renderInfraredCandidates(groups) {
   const tbody = $("infrared-rows");
   tbody.replaceChildren();
-  $("infrared-results").hidden = false;
+  // Keep the table collapsed so the sky map remains large.\n  $("infrared-toggle-results").textContent = $("infrared-results").hidden ? "Show candidates (" + groups.length + ")" : "Hide candidates";
   for (const [i, s] of groups.entries()) {
     const row = document.createElement("tr");
     const cells = [i + 1, s.ra.toFixed(5), s.dec.toFixed(5), s.bands.join(", "),
@@ -679,7 +688,7 @@ $("infrared-map-btn").addEventListener("click", async () => {
     frames.forEach((frame, i) => {
       const geo = { ra: query.ra, dec: query.dec, n,
         scaleArcsec: frame.pixelScaleArcsec ?? query.fov * 60 / n };
-      const peaks = detectSources(arrays[i], n, { detectSigma: 5, mask: masks?.[i] ?? null })
+      const peaks = detectSources(arrays[i], n, { detectSigma: Number($("infrared-sigma").value), mask: masks?.[i] ?? null })
         .sort((a,b) => b.snr - a.snr).slice(0, 200);
       for (const p of peaks) {
         detections.push({
@@ -707,7 +716,7 @@ $("infrared-map-btn").addEventListener("click", async () => {
       detector: s.bands.join(", "),
       synthetic: DATA_SOURCE !== "api" || !isFloat,
     })));
-    renderInfraredCandidates(groups);
+    sky.showInfraredMarkers($("infrared-show-candidates").checked);\n    sky.showSimbadMarkers($("infrared-show-simbad").checked);\n    renderInfraredCandidates(groups);
     const origin = DATA_SOURCE === "api" && isFloat
       ? "real FITS-derived pixels" : "SYNTHETIC / display pixels, NOT real SPHEREx measurements";
     status.textContent = `${groups.length} spatial candidates from ${frames.length} frames across ${byBand.size} detector(s). ${catalogueNote}. ${origin}. No motion filtering; no calibrated spectral classification.`;
