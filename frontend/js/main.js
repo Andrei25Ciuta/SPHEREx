@@ -639,38 +639,37 @@ $("infrared-export").addEventListener("click", () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 function renderInfraredCandidates(groups) {
-  const container = $("infrared-rows");
-  container.replaceChildren();
+  const tbody = $("infrared-rows");
+  tbody.replaceChildren();
   $("infrared-toggle-results").textContent = $("infrared-results").hidden
     ? "Show candidates (" + groups.length + ")" : "Hide candidates";
   for (const [i, s] of groups.entries()) {
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "infrared-candidate";
-    card.setAttribute("role", "listitem");
-    const title = document.createElement("span");
-    title.className = "infrared-candidate-title";
-    title.textContent = "IR #" + String(i + 1).padStart(2, "0");
-    const band = document.createElement("span");
-    band.className = "infrared-candidate-bands";
-    band.textContent = s.bands.join(" · ");
-    const signal = document.createElement("span");
-    signal.className = "infrared-candidate-signal";
-    signal.textContent = "S/N " + s.maxSnr.toFixed(1);
-    const coords = document.createElement("span");
-    coords.className = "infrared-candidate-coords";
-    coords.textContent = "RA " + s.ra.toFixed(4) + "° · Dec " + s.dec.toFixed(4) + "°";
-    const match = document.createElement("span");
-    match.className = "infrared-candidate-match";
-    match.textContent = s.match ? "SIMBAD: " + s.match.name : "No nearby SIMBAD match";
-    card.append(title, signal, band, coords, match);
-    card.addEventListener("click", () => {
-      container.querySelectorAll(".infrared-candidate").forEach(el => el.classList.remove("selected"));
-      card.classList.add("selected");
-      $("infrared-detail").textContent = `Candidate #${i + 1}: ${s.members.length} peaks in ${s.bands.length} bands; ${s.wavelengthRange ? s.wavelengthRange.map(x => x.toFixed(2)).join("–") + " µm" : "wavelength unknown"}. ${s.match ? "SIMBAD: " + s.match.name : "No nearby SIMBAD match (not proof of novelty)"}. These are not calibrated spectral measurements.`;
-      if (sky.isOpen) sky.aladin.gotoRaDec(s.ra, s.dec);
+    const row = document.createElement("tr");
+    row.tabIndex = 0;
+    row.setAttribute("aria-label", "Select infrared candidate " + (i + 1));
+    const values = [
+      "IR #" + String(i + 1).padStart(2, "0"),
+      s.ra.toFixed(5),
+      s.dec.toFixed(5),
+      s.bands.join(", "),
+      s.maxSnr.toFixed(1),
+      s.match ? s.match.name : "No nearby match",
+    ];
+    values.forEach((value, j) => {
+      const cell = document.createElement(j === 0 ? "th" : "td");
+      if (j === 0) cell.scope = "row";
+      cell.textContent = value;
+      row.append(cell);
     });
-    container.append(card);
+    const select = () => {
+      tbody.querySelectorAll("tr").forEach(el => el.classList.remove("selected"));
+      row.classList.add("selected");
+      $("infrared-detail").textContent = `Candidate #${i + 1}: ${s.members.length} peaks in ${s.bands.length} detector bands; ${s.wavelengthRange ? s.wavelengthRange.map(x => x.toFixed(2)).join("–") + " µm" : "wavelength unknown"}. ${s.match ? "SIMBAD: " + s.match.name : "No nearby SIMBAD match (not proof of novelty)"}. These are not calibrated spectral measurements.`;
+      if (sky.isOpen) sky.aladin.gotoRaDec(s.ra, s.dec);
+    };
+    row.addEventListener("click", select);
+    row.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(); } });
+    tbody.append(row);
   }
   if (!groups.length) $("infrared-detail").textContent = "No peaks exceeded the detection threshold.";
 }
