@@ -608,6 +608,53 @@ $("aladin-btn").addEventListener("click", async () => {
 });
 $("survey-select").addEventListener("change", (e) => sky.setSurvey(e.target.value));
 
+/** Detect spatial peaks, not trajectories, and place them on the existing Aladin sky map. */
+$("infrared-map-btn").addEventListener("click", async () => {
+  const btn = $("infrared-map-btn"), status = $("infrared-map-status");
+  const query = currentQuery || readForm();
+  if (!query) { status.textContent = "Enter valid sky coordinates first."; return; }
+  if (!currentFrames.length || !player.naturalSize) {
+    status.textContent = "Load a sky field first (Search), then detect infrared sources.";
+    return;
+  }
+  const token = loadToken;
+  btn.disabled = true;
+  status.textContent = "Detecting infrared peaks in the loaded field…";
+  try {
+    // The reddest available band can reveal sources faint at shorter wavelengths.
+    const frame = [...currentFrames].sort((a, b) =>
+      (b.wavelengthMaxUm ?? 0) - (a.wavelengthMaxUm ?? 0))[0];
+    const { arrays, masks, isFloat } = await detectionPixels([frame]);
+    if (!arrays?.[0]) throw new Error("Image pixels unavailable");
+    if (token !== loadToken) return;
+    const n = player.naturalSize;
+    const peaks = detectSources(arrays[0], n, {
+      detectSigma: 5,
+      mask: masks?.[0] ?? null,
+    }).sort((a, b) => b.snr - a.snr).slice(0, 150);
+    await openSkyMap(query);
+    if (token !== loadToken || !sky.isOpen) return;
+    const geo = {
+      ra: query.ra, dec: query.dec, n,
+      scaleArcsec: frame.pixelScaleArcsec ?? query.fov * 60 / n,
+    };
+    sky.setInfraredSources(peaks.map((p) => ({
+      ...canvasToSky(p.x / n, p.y / n, geo),
+      snr: p.snr, detector: frame.detector || "unknown",
+      synthetic: DATA_SOURCE !== "api" || !isFloat,
+    })));
+    const origin = DATA_SOURCE === "api" && isFloat
+      ? "real FITS-derived pixels" : "SYNTHETIC / display pixels (not real SPHEREx detections)";
+    status.textContent = `${peaks.length} infrared peaks shown on the map from ${frame.detector || "selected detector"} (${origin}). Peaks are not confirmed or catalog-matched objects; movement was not used.`;
+  } catch (err) {
+    console.error(err);
+    status.textContent = "Infrared map detection failed: " + (err.message || err);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+
 // ---------------------------------------------------------------
 // Catalogue (SIMBAD): overlay on the blink image, and the "known object" check of Find movers
 // (features/catalogue.js). Only with real data: the synthetic sky has no real objects to match.
