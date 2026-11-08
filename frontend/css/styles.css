@@ -740,3 +740,19 @@ body::before {
   flex: 0 0 auto; max-height: min(38vh, 350px); overflow-y: auto; overflow-x: hidden;
 }
 .skyframe.is-fullscreen .infrared-cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+
+/* Infrared results: aligned, readable table with a single horizontal overflow on narrow screens. */
+.infrared-table-wrap { width: 100%; overflow-x: auto; overflow-y: visible; margin: .7rem 0; }
+#infrared-results .infrared-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: .86rem; }
+#infrared-results .infrared-table th,
+#infrared-results .infrared-table td { padding: .75rem .9rem; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--border); }
+#infrared-results .infrared-table thead th {
+  position: sticky; top: 0; z-index: 1; background: #193039; color: #c2d9de;
+  font-size: .76rem; letter-spacing: .025em; font-weight: 700;
+}
+#infrared-results .infrared-table tbody tr { cursor: pointer; }
+#infrared-results .infrared-table tbody tr:hover,
+#infrared-results .infrared-table tbody tr:focus-visible,
+#infrared-results .infrared-table tbody tr.selected { background: rgba(255, 137, 173, .12); outline: none; }
+#infrared-results .infrared-table tbody th { font-weight: 700; color: #ffb0c5; }
+#infrared-results .infrared-table td:last-child { white-space: normal; min-width: 150px; }
