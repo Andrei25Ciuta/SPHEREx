@@ -12,7 +12,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Oswald:wght@500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
 
   <script>if (/[?&]embed=1(&|$)/.test(location.search)) document.documentElement.classList.add("embed");</script>   <!-- ?embed=1: workspace only, for an <iframe> -->
-  <link rel="stylesheet" href="css/styles.css?v=14">
+  <link rel="stylesheet" href="css/styles.css?v=15">
 </head>
 <body>
   <!-- Decorative animated starfield behind everything (pure CSS, aria-hidden) -->
@@ -302,7 +302,10 @@
           <h3>Infrared source candidates</h3>
           <p class="muted small">Ranked by signal strength and detections across bands, not by movement. Scores are heuristic, not probabilities. A missing SIMBAD match does not mean a new discovery.</p>
           <button type="button" class="btn btn-small" id="infrared-export">Export candidates CSV</button>
-          <div id="infrared-rows" class="infrared-cards" role="list" aria-label="Infrared source candidates"></div>
+          <div class="infrared-table-wrap"><table class="infrared-table" aria-label="Infrared source candidates">
+            <thead><tr><th scope="col">Candidate</th><th scope="col">RA (°)</th><th scope="col">Dec (°)</th><th scope="col">IR bands</th><th scope="col" title="Peak signal-to-noise ratio">Peak S/N</th><th scope="col">SIMBAD match</th></tr></thead>
+            <tbody id="infrared-rows"></tbody>
+          </table></div>
           <p class="muted small" id="infrared-detail" aria-live="polite">Select a candidate to inspect its band coverage.</p>
         </div>
         <p class="muted small" id="sky-geo-note" hidden></p>
@@ -394,6 +397,6 @@
 
   <!-- type="module" lets us use import/export without a bundler.
        NOTE: modules do NOT load from file:// – serve the folder over http. -->
-  <script type="module" src="js/main.js?v=15"></script>
+  <script type="module" src="js/main.js?v=16"></script>
 </body>
 </html>
