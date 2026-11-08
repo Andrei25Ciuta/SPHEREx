@@ -12,7 +12,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Oswald:wght@500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
 
   <script>if (/[?&]embed=1(&|$)/.test(location.search)) document.documentElement.classList.add("embed");</script>   <!-- ?embed=1: workspace only, for an <iframe> -->
-  <link rel="stylesheet" href="css/styles.css?v=13">
+  <link rel="stylesheet" href="css/styles.css?v=14">
 </head>
 <body>
   <!-- Decorative animated starfield behind everything (pure CSS, aria-hidden) -->
@@ -284,7 +284,7 @@
           </select>
           <button type="button" class="btn btn-small" id="aladin-btn">Show sky map</button>
           <button type="button" class="btn btn-small" id="infrared-map-btn">Find infrared sources</button>
-          <label for="infrared-sigma">Detection threshold</label>
+          <label for="infrared-sigma" title="Minimum signal above estimated background noise. 4σ detects fainter peaks but more false positives; 7σ is stricter.">Detection threshold ⓘ</label>
           <select id="infrared-sigma" aria-label="Infrared detection threshold">
             <option value="4">Sensitive (4σ)</option>
             <option value="5" selected>Balanced (5σ)</option>
@@ -302,12 +302,7 @@
           <h3>Infrared source candidates</h3>
           <p class="muted small">Ranked by signal strength and detections across bands, not by movement. Scores are heuristic, not probabilities. A missing SIMBAD match does not mean a new discovery.</p>
           <button type="button" class="btn btn-small" id="infrared-export">Export candidates CSV</button>
-          <div class="table-scroll" style="max-height:340px;overflow:auto">
-            <table aria-label="Infrared source candidates">
-              <thead><tr><th>Rank</th><th>RA</th><th>Dec</th><th>Bands</th><th>Peak S/N</th><th>Score</th><th>SIMBAD</th></tr></thead>
-              <tbody id="infrared-rows"></tbody>
-            </table>
-          </div>
+          <div id="infrared-rows" class="infrared-cards" role="list" aria-label="Infrared source candidates"></div>
           <p class="muted small" id="infrared-detail" aria-live="polite">Select a candidate to inspect its band coverage.</p>
         </div>
         <p class="muted small" id="sky-geo-note" hidden></p>
@@ -399,6 +394,6 @@
 
   <!-- type="module" lets us use import/export without a bundler.
        NOTE: modules do NOT load from file:// – serve the folder over http. -->
-  <script type="module" src="js/main.js?v=14"></script>
+  <script type="module" src="js/main.js?v=15"></script>
 </body>
 </html>
