@@ -225,6 +225,18 @@ export class SkyContext {
     })));
   }
 
+  showInfraredMarkers(show) {
+    if (!this.infraredCatalog) return;
+    if (show) this.infraredCatalog.show();
+    else this.infraredCatalog.hide();
+  }
+  showSimbadMarkers(show) {
+    this.simbadVisible = show;
+    if (!this.simbad) return;
+    if (show) this.simbad.show();
+    else this.simbad.hide();
+  }
+
   setSurvey(key) {
     this.survey = key;
     if (!this.aladin) return;
@@ -263,6 +275,7 @@ export class SkyContext {
         name: "SIMBAD", color: "#f5b942", sourceSize: 14, shape: "circle", onClick: "showPopup",
       }, null, fail, false);                    // false = no CDS proxy (we have CORS)
       aladin.addCatalog(this.simbad);
+      if (this.simbadVisible === false) this.simbad.hide();
     } catch (err) {
       console.warn("SIMBAD overlay failed", err);
       fail();
